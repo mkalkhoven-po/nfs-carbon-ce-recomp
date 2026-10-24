@@ -50,6 +50,8 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+- `0003-kernel-log-swap-rate-setting.patch` (`src/kernel/xboxkrnl/xboxkrnl_video.cpp`):
+  cvar `log_swap_rate=N` logt elke N seconden de framerate (swaps/s). Handig voor metingen.
 - `0002-graphics-guest-vblank-rate-setting.patch` (`src/graphics/graphics_system.cpp`):
   nieuwe cvar `guest_vblank_rate` (Hz, 0 = refresh rate van de video mode). Carbon
   presenteert op elke vblank en rekent met de klok, dus dit is de frame-cap.

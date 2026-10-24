@@ -1,0 +1,49 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_video.cpp b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+index 1254710..aa69a55 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_video.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <algorithm>
+ #include <atomic>
++#include <chrono>
+ #include <string>
+ 
+ #include <rex/cvar.h>
+@@ -85,6 +86,11 @@ void WarnNoGpuEmulation(const char* export_name, std::atomic<bool>& warned) {
+ }
+ }  // namespace
+ 
++REXCVAR_DEFINE_INT32(log_swap_rate, 0, "GPU",
++                     "Log the guest swap (presented frame) rate every N seconds; 0 = off")
++    .range(0, 60)
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ namespace rex::kernel::xboxkrnl {
+ using namespace rex::system;
+ 
+@@ -445,6 +451,24 @@ void VdSwap_entry(mapped_void buffer_ptr,      // ptr into primary ringbuffer
+                   mapped_u32 frontbuffer_ptr,  // ptr to frontbuffer address
+                   mapped_u32 texture_format_ptr, mapped_u32 color_space_ptr, mapped_u32 width,
+                   mapped_u32 height) {
++  if (int32_t interval_s = REXCVAR_GET(log_swap_rate); interval_s > 0) {
++    static std::atomic<uint32_t> swap_count{0};
++    static std::atomic<int64_t> window_start_ms{0};
++    int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
++                         std::chrono::steady_clock::now().time_since_epoch())
++                         .count();
++    int64_t start_ms = window_start_ms.load();
++    if (start_ms == 0) {
++      window_start_ms = start_ms = now_ms;
++    }
++    uint32_t count = ++swap_count;
++    if (now_ms - start_ms >= int64_t(interval_s) * 1000) {
++      REXKRNL_INFO("VdSwap: {:.1f} swaps/s", count * 1000.0 / double(now_ms - start_ms));
++      swap_count = 0;
++      window_start_ms = now_ms;
++    }
++  }
++
+   // All of these parameters are REQUIRED.
+   assert(buffer_ptr);
+   assert(fetch_ptr);

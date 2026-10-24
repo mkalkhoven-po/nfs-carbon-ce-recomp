@@ -19,3 +19,6 @@ sdk/rexglue-wiki/
 # --- Tooling ---
 __pycache__/
 *.pyc
+
+# --- Local performance experiments ---
+perf/

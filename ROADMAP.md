@@ -29,6 +29,23 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       race-klok loopt exact realtime op 30, 60 en 120 fps, AI racet, auto rijdt normaal;
       FMV's blijven op hun eigen 30 fps met audio in sync.*
 
+## Prestaties (meting 24-10, RTX 5080, Quick Race Main Street)
+
+- **Bottleneck is de host-GPU in het nauwkeurige EDRAM-pad.** In de race zit de GPU op
+  ~96% (Vulkan `fsi`) of ~98% (D3D12 `rov`) al bij 1× resolutie; ongeremd ~75–92 fps.
+  Met `fbo` (host render targets): ~88 fps bij ~80%. De kosten schalen nauwelijks met
+  resolutie (interlock-serialisatie, niet pixelaantal).
+- Remix (2×, 60 fps cap) houdt 60 fps in de race, maar met `fsi` op 94–97% GPU (dipjes
+  naar 56); met `fbo` op ~68%.
+- CPU-profiel (eigen sampling-profiler): de game-threads staan ~1/3 te slapen/yielden en
+  ~22% in de D3D-"wacht op GPU"-lus (`sub_826E0088`); ze wachten dus vooral op de GPU.
+- Codegen-opties: `ctr/xer/cr/reserved/non_volatile_as_local` werken;
+  `non_argument_as_local` laat de game bij het opstarten vastlopen (r11/r12 worden buiten de
+  aanroepconventie gebruikt). Winst in de race klein en ruisig (−4…+8%) omdat de GPU de
+  rem is; nog niet overgenomen.
+- Open: visueel verschil `fsi` vs `fbo` beoordelen (bepaalt of Remix `fbo` mag gebruiken);
+  de interlock-shaders zelf optimaliseren.
+
 ### Stretch goals
 
 - [ ] **4. Widescreen/ultrawide**: aspect ratio + FOV patchen, HUD-ankers, framebuffer
