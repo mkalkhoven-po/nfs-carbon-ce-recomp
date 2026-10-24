@@ -77,8 +77,15 @@ video's maar ~11 fps in plaats van 30 en liepen ze steeds verder achter op de au
 
 ## Status
 
-24-10-2026: start op, speelt de logo's, intro-video's en de openingscinematic af zonder
-crash. Menu, besturing en in-game rendering nog niet getest.
+24-10-2026: start op, speelt de logo's, intro-video's en de openingscinematic af en komt via
+het titelscherm in het **hoofdmenu** (3D-garage rendert correct). Navigeren werkt met controller
+en toetsenbord (o.a. MY CARS openen en terug). Stabiel en zonder fouten in de log. "Cannot
+connect to Xbox Live!" bij het opstarten is verwacht. Career/races nog niet getest.
+
+Besturing: een Xbox-controller werkt direct. Toetsenbord met `--mnk_mode=true`:
+Start = `Return`, A = `Space`, B = `Backspace`, linker stick = `WASD`.
+Savegames komen in `Documents
+fsc`.
 
 Opgelost: audio liep uit sync met de video's in de Debug-build (video-decodering te traag
 op `-O0`; gemeten 11 vs. 30 fps, audio steeds exact 187,5 frames/s = 48 kHz / 256).
