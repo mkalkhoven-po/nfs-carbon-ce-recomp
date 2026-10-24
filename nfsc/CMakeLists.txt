@@ -21,4 +21,11 @@ else()
     add_executable(nfsc ${NFSC_SOURCES})
 endif()
 
-rexglue_setup_target(nfsc)
+rexglue_setup_target(nfsc GPU_PLUGINS xenos)
+
+# At -O0 the recompiled game code is far too slow: FMVs decode at ~11 fps instead
+# of 30 and drift away from the real-time audio. Optimize it in Debug as well;
+# the runtime and src/ stay unoptimized and debuggable.
+if(TARGET nfsc_recomp)
+    target_compile_options(nfsc_recomp PRIVATE $<$<CONFIG:Debug>:-O2>)
+endif()

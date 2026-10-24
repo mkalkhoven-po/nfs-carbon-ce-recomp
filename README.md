@@ -64,21 +64,24 @@ Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd u
 ## Spelen
 
 ```bash
-cd nfsc/out/build/win-amd64-debug
-./nfsc.exe --game_data_root="E:/Need for Speed Carbon - Recomp/game" --gpu_plugin=xenos
+cd nfsc/out/build/win-amd64-release   # of win-amd64-debug
+./nfsc.exe --game_data_root="E:/Need for Speed Carbon - Recomp/game"
 ```
 
-`rexgpu-xenosd.dll` (Debug) of `rexgpu-xenos.dll` (Release) moet naast `nfsc.exe` staan;
-kopieer hem uit `sdk/rexglue-sdk/out/install/win-amd64/bin/`. Smart App Control moet uit
-staan, anders blokkeert Windows elke nieuw gebouwde `.exe`.
+De build zet de GPU-plugin (`rexgpu-xenos*.dll`) zelf naast `nfsc.exe` en de app kiest
+`xenos` standaard (`--gpu_plugin=...` overschrijft dat). Smart App Control moet uit staan,
+anders blokkeert Windows elke nieuw gebouwde `.exe`.
+
+De gegenereerde game-code wordt ook in Debug met `-O2` gecompileerd: op `-O0` haalden de
+video's maar ~11 fps in plaats van 30 en liepen ze steeds verder achter op de audio.
 
 ## Status
 
 24-10-2026: start op, speelt de logo's, intro-video's en de openingscinematic af zonder
 crash. Menu, besturing en in-game rendering nog niet getest.
 
-Bekende problemen:
-- Audio loopt flink uit sync met de video's (geluid zelf klinkt goed).
+Opgelost: audio liep uit sync met de video's in de Debug-build (video-decodering te traag
+op `-O0`; gemeten 11 vs. 30 fps, audio steeds exact 187,5 frames/s = 48 kHz / 256).
 
 Codegen los draaien:
 `sdk/rexglue-sdk/out/install/win-amd64/bin/rexglue.exe codegen nfsc/nfsc_manifest.toml`
