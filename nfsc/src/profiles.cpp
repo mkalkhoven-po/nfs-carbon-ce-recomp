@@ -45,6 +45,10 @@ constexpr std::array kProfileValues = {
     ProfileValue{"draw_resolution_scale_y", "1", "2"},
     ProfileValue{"native_2x_msaa", "true", "true"},
     ProfileValue{"swap_post_effect", "none", "none"},
+    // The game presents on every vblank and times its simulation by the clock,
+    // so the vblank rate is the frame cap: 30 fps like the Xbox 360 (which never
+    // reached 60), or 60 fps. Race timers run in real time at 30, 60 and 120.
+    ProfileValue{"guest_vblank_rate", "30", "60"},
     // Immediate presentation shows only black on NVIDIA (RTX 5080, layered DXGI
     // present); mailbox and FIFO work.
     ProfileValue{"vulkan_allow_present_mode_immediate", "false", "false"},

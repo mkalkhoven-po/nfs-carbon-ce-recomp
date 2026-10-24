@@ -50,6 +50,9 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+- `0002-graphics-guest-vblank-rate-setting.patch` (`src/graphics/graphics_system.cpp`):
+  nieuwe cvar `guest_vblank_rate` (Hz, 0 = refresh rate van de video mode). Carbon
+  presenteert op elke vblank en rekent met de klok, dus dit is de frame-cap.
 - `0001-gapfill-claim-code-after-bctr-tail-calls.patch` (`src/codegen/phase_gapfill.cpp`): GapFill miste code direct na functies die eindigen
   op een indirecte tail call (`bctr`, veel gebruikt voor virtuele calls); de eerste
   crash (call naar `0x824DA838`) kwam daardoor. Aanpassingen:
@@ -83,6 +86,7 @@ gaan altijd voor op het profiel.
 | Interne resolutie (`draw_resolution_scale_x/y`) | 1 (1280×720) | 2 (2560×1440) |
 | Anisotrope filtering (`anisotropic_override`) | -1 (wat de game vraagt) | 5 (16×) |
 | Native 2× MSAA | aan | aan |
+| Framerate (`guest_vblank_rate`) | 30 fps (zoals de 360) | 60 fps |
 
 GPU-belasting in het hoofdmenu (RTX 5080): ~36% bij 1×, ~53% bij 2×, ~90% bij 3×.
 Voor een 4K-scherm kan `draw_resolution_scale_x/y = 3`, maar dat laat weinig marge.

@@ -22,13 +22,23 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       *Profiel staat (2×, 16× AF). FSR/CAS nog niet: vereist de experimentele build-optie
       `REXGLUE_ENABLE_FIDELITYFX` plus de Vulkan SDK. Op een 1440p-scherm is 2× al native,
       dus CAS (verscherpen) is de enige echte winst.*
-- [ ] **3. 60 fps**: frame-cap van de game vinden en patchen; physics, AI en FMV's testen.
+- [x] **3. 60 fps**: frame-cap van de game vinden en patchen; physics, AI en FMV's testen.
+      *Klaar (24-10). Er is geen 30 fps-cap in de code: de game presenteert op elke vblank
+      (60 Hz) en rekent met de klok; de 360 haalde 60 gewoon niet. Nieuwe SDK-cvar
+      `guest_vblank_rate` bepaalt de cap: Origineel 30, Remix 60. Getest in een Quick Race:
+      race-klok loopt exact realtime op 30, 60 en 120 fps, AI racet, auto rijdt normaal;
+      FMV's blijven op hun eigen 30 fps met audio in sync.*
 
 ### Stretch goals
 
 - [ ] **4. Widescreen/ultrawide**: aspect ratio + FOV patchen, HUD-ankers, framebuffer
       vergroten (aanpak van de PC-widescreenfixes voor dezelfde engine als referentie).
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
+      *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
+      waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps
+      (prestatie is de grens) met realtime race-klok. Volledig ongeremd (`vsync=false`,
+      1000 vblanks/s) hangt het spel bij het laden van een race. Te doen: race-prestaties
+      profileren, physics bij hoge fps controleren (o.a. botsingen), hang onderzoeken.*
 
 ### Bewust niet
 
