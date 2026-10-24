@@ -36,7 +36,7 @@ python tools/xdvdfs.py extract "Need for Speed - Carbon - Collector's Edition.is
 #    vervangt git-symlinks (Windows checkt die uit als tekstbestand) en past patches toe.
 bash tools/setup-sdk.sh
 cd sdk/rexglue-sdk
-cmake --preset win-amd64
+cmake --preset win-amd64 -DREXGLUE_USE_VULKAN=ON   # Vulkan staat op Windows standaard uit
 cmake --build --preset win-amd64-release --target install
 cmake --build --preset win-amd64-debug --target install
 
@@ -68,8 +68,27 @@ cd nfsc/out/build/win-amd64-release   # of win-amd64-debug
 ./nfsc.exe --game_data_root="E:/Need for Speed Carbon - Recomp/game"
 ```
 
-De build zet de GPU-plugin (`rexgpu-xenos*.dll`) zelf naast `nfsc.exe` en de app kiest
-`xenos` standaard (`--gpu_plugin=...` overschrijft dat). Smart App Control moet uit staan,
+De build zet de GPU-plugin (`rexgpu-xenos*.dll`) zelf naast `nfsc.exe`; de app gebruikt
+standaard de Vulkan-backend (`--gpu_backend=d3d12` voor D3D12).
+
+### Grafische profielen
+
+`--profile=original` (standaard) of `--profile=remix`, of `profile = "remix"` in
+`nfsc.toml` naast de exe. Instellingen die je zelf zet (toml, commandoregel, F4-menu)
+gaan altijd voor op het profiel.
+
+| Instelling | original | remix |
+|---|---|---|
+| EDRAM-emulatie (`render_target_path_vulkan`) | `fsi` (interlock, nauwkeurig) | `fsi` |
+| Interne resolutie (`draw_resolution_scale_x/y`) | 1 (1280×720) | 2 (2560×1440) |
+| Anisotrope filtering (`anisotropic_override`) | -1 (wat de game vraagt) | 5 (16×) |
+| Native 2× MSAA | aan | aan |
+
+GPU-belasting in het hoofdmenu (RTX 5080): ~36% bij 1×, ~53% bij 2×, ~90% bij 3×.
+Voor een 4K-scherm kan `draw_resolution_scale_x/y = 3`, maar dat laat weinig marge.
+
+Vulkan-presentatiemodus *immediate* geeft op NVIDIA een zwart beeld; de profielen zetten
+`vulkan_allow_present_mode_immediate = false` (mailbox/FIFO werken). Smart App Control moet uit staan,
 anders blokkeert Windows elke nieuw gebouwde `.exe`.
 
 De gegenereerde game-code wordt ook in Debug met `-O2` gecompileerd: op `-O0` haalden de

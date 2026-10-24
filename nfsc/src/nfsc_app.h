@@ -4,7 +4,11 @@
 
 #pragma once
 
+#include <rex/logging.h>
 #include <rex/rex_app.h>
+#include <rex/system/gpu_plugin.h>
+
+#include "profiles.h"
 
 class NfscApp : public rex::ReXApp {
  public:
@@ -16,11 +20,23 @@ class NfscApp : public rex::ReXApp {
         PPCImageConfig));
   }
 
-  // Use the Xenos GPU plugin unless --gpu_plugin says otherwise.
+  // Loads the Xenos GPU plugin (unless --gpu_plugin says otherwise) with the
+  // backend from --gpu_backend, then applies the graphics profile. The order
+  // matters: the GPU cvars only exist once the plugin is loaded, and the GPU
+  // system reads them later, during its setup.
   void OnPreSetup(rex::RuntimeConfig& config) override {
     if (config.gpu_plugin.empty()) {
       config.gpu_plugin = "xenos";
     }
+    if (!config.graphics) {
+      std::string backend = nfsc::GpuBackend();
+      config.graphics = rex::system::LoadGpuPlugin(config.gpu_plugin, backend);
+      if (!config.graphics && backend != "any") {
+        REXLOG_WARN("nfsc: GPU backend '{}' unavailable, falling back", backend);
+        config.graphics = rex::system::LoadGpuPlugin(config.gpu_plugin, "any");
+      }
+    }
+    nfsc::ApplyProfile();
   }
 
   // Override virtual hooks for customization:
