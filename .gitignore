@@ -1,0 +1,21 @@
+# --- Game content (copyrighted, never commit) ---
+*.iso
+game/
+nfsc/generated/default/
+screenshots/
+filelist.txt
+
+# --- Build output ---
+nfsc/out/
+out/
+CMakeUserPresets.json
+
+# --- Logs ---
+*.log
+
+# --- Local reference copies ---
+sdk/rexglue-wiki/
+
+# --- Tooling ---
+__pycache__/
+*.pyc

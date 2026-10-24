@@ -1,0 +1,19 @@
+# Manual function boundaries for default.xex (title 454107EC, v0.0.0.7).
+# Each entry fixes a function the automatic analysis missed or split wrongly.
+
+[functions]
+# Tail-call targets that only appear as `b` from this-adjustor thunks and
+# sit in gaps the analysis left unclaimed.
+0x82321690 = {}  # reached from sub_82300068 (b at 0x82300090)
+0x82A63238 = {}  # reached from thunk sub_82A64068
+0x82A665C0 = {}  # reached from thunk sub_82A66A20
+
+# The analysis started these functions 0x18 bytes too late (at 0x825C8CC0 /
+# 0x825CE4F0), so their early-return path (blt back to 0x...CB8 / 0x...4E8)
+# fell outside them. The real start is right after the preceding bctr.
+0x825C8CA8 = { end = 0x825C8CE8 }
+0x825CE4D8 = { end = 0x825CE518 }
+
+# Function following the blr at 0x825B35B4; its `bne` at 0x825B35C0 targets
+# 0x825B35E0 inside the same function.
+0x825B35B8 = {}
