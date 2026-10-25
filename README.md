@@ -110,10 +110,21 @@ het titelscherm in het **hoofdmenu** (3D-garage rendert correct). Navigeren werk
 en toetsenbord (o.a. MY CARS openen en terug). Stabiel en zonder fouten in de log. "Cannot
 connect to Xbox Live!" bij het opstarten is verwacht. Career/races nog niet getest.
 
-Besturing: een Xbox-controller werkt direct. Toetsenbord met `--mnk_mode=true`:
-Start = `Return`, A = `Space`, B = `Backspace`, linker stick = `WASD`.
-Savegames komen in `Documents
-fsc`.
+### Besturing en sneltoetsen
+
+Een Xbox-controller en het toetsenbord werken tegelijk (toetsenbord staat standaard aan via
+`mnk_mode`). Toetsenbord: Start = `Return`, A = `Space`, B = `Backspace`, back = `Tab`,
+sturen = `WASD`, gas = `E`, rem = `Q`.
+
+| Toets | Functie |
+|---|---|
+| `Alt+F4` | Afsluiten |
+| `F11` | Wisselen tussen schermvullend en venster (met sluitknop) |
+| `F3` | Debug-overlay |
+| `F4` | Instellingen (alle cvars, opslaan naar `nfsc.toml`) |
+| `` ` `` | Console |
+
+Savegames komen in `Documents\nfsc`.
 
 Opgelost: audio liep uit sync met de video's in de Debug-build (video-decodering te traag
 op `-O0`; gemeten 11 vs. 30 fps, audio steeds exact 187,5 frames/s = 48 kHz / 256).

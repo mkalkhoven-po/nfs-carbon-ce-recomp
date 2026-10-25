@@ -53,6 +53,9 @@ constexpr std::array kProfileValues = {
     // Immediate presentation shows only black on NVIDIA (RTX 5080, layered DXGI
     // present); mailbox and FIFO work.
     ProfileValue{"vulkan_allow_present_mode_immediate", "false", "false"},
+    // Not graphics, but a sensible default for both: keyboard controls next to
+    // a controller (the input system merges both devices for player 1).
+    ProfileValue{"mnk_mode", "true", "true"},
 };
 
 }  // namespace

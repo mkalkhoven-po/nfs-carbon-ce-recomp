@@ -4,9 +4,11 @@
 
 #pragma once
 
+#include <rex/cvar.h>
 #include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/system/gpu_plugin.h>
+#include <rex/ui/keybinds.h>
 
 #include "profiles.h"
 
@@ -37,6 +39,15 @@ class NfscApp : public rex::ReXApp {
       }
     }
     nfsc::ApplyProfile();
+  }
+
+  // F11 switches between fullscreen and a window with a title bar (and close
+  // button). Alt+F4 quits in both.
+  void OnPostSetup() override {
+    rex::ui::RegisterBind("bind_fullscreen", "F11", "Toggle fullscreen", [] {
+      bool fullscreen = rex::cvar::Query<bool>("fullscreen");
+      rex::cvar::SetFlagByName("fullscreen", fullscreen ? "false" : "true");
+    });
   }
 
   // Override virtual hooks for customization:
