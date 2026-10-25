@@ -60,6 +60,15 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 - [ ] **4. Widescreen/ultrawide**: aspect ratio + FOV patchen, HUD-ankers, framebuffer
       vergroten (aanpak van de PC-widescreenfixes voor dezelfde engine als referentie).
+      *Bezig (25-10). De game rendert altijd 1280×720; een bredere videomodus
+      (`video_mode_width`) rekte dat alleen uit. `sub_8250B0D0` kiest de rendergrootte en
+      zet die in 0x82C651E8/EC en 0x82C651F0/F4; `nfsc/src/widescreen.cpp` overschrijft die
+      (`render_width`/`render_height`, experimenteel, standaard uit). Met 1680×720 is de
+      framebuffer echt 21:9 en staat de HUD correct aan de randen, maar het 3D-beeld vult
+      alleen de linker 1280 px (rechts bloom-afval): viewport/post-processing gebruiken nog
+      vaste 1280/720 in ~10 functies (o.a. `sub_824FFAB0` render targets, `sub_82621DB0`,
+      `sub_82622758`, `sub_8262E460`, `sub_8275B1E8`, `sub_82760090`, `sub_827601D8`,
+      `sub_82AA6C78`) plus float-constanten 1280.0. Daarna: projectie/FOV (hor+) controleren.*
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps

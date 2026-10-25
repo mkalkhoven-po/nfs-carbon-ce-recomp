@@ -15,6 +15,7 @@ set(NFSC_SOURCES
     src/main.cpp
     src/exit_option.cpp
     src/profiles.cpp
+    src/widescreen.cpp
 )
 
 if(WIN32)
