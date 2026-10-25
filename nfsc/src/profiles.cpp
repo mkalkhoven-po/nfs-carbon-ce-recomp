@@ -46,6 +46,9 @@ constexpr std::array kProfileValues = {
     ProfileValue{"draw_resolution_scale_y", "1", "2"},
     ProfileValue{"native_2x_msaa", "true", "true"},
     ProfileValue{"swap_post_effect", "none", "none"},
+    // AMD CAS sharpening when presenting (needs the SDK built with FidelityFX).
+    // At 2x on a 1440p display it only sharpens; the effect is mild.
+    ProfileValue{"present_effect", "bilinear", "cas"},
     // The game presents on every vblank and times its simulation by the clock,
     // so the vblank rate is the frame cap: 30 fps like the Xbox 360 (which never
     // reached 60), or 60 fps. Race timers run in real time at 30, 60 and 120.

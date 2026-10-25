@@ -17,9 +17,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       interlock, vergelijken met D3D12, profiel "Origineel" vastleggen.
       *Klaar (24-10). Vulkan- en D3D12-beeld identiek op het oog. Nog te doen: vergelijken
       met referentiebeelden van een echte 360 of Xenia.*
-- [ ] **2. Remix (bestaande opties)**: resolutieschaal 2×/3×, anisotroop 16×, FSR/CAS,
+- [x] **2. Remix (bestaande opties)**: resolutieschaal 2×/3×, anisotroop 16×, FSR/CAS,
       vsync; gebundeld in profiel "Remix".
-      *Profiel staat (2×, 16× AF). FSR/CAS nog niet: vereist de experimentele build-optie
+      *Klaar (25-10): Remix = 2×, 16× AF, `fbo`, CAS (`present_effect = cas`, milde standaard-
+      scherpte; extra via `present_cas_additional_sharpness`). Effect is subtiel omdat 2× op
+      1440p al native is. Bouwnotities hieronder.
+      Oorspronkelijke notitie: FSR/CAS vereist de experimentele build-optie
       `REXGLUE_ENABLE_FIDELITYFX` met `REXGLUE_FIDELITYFX_BACKEND=vk`, en de FidelityFX
       Vulkan-backend heeft de LunarG Vulkan SDK nodig (`vulkan-1.lib`). Installatie
       (`winget install KhronosGroup.VulkanSDK`, vraagt admin) is op 25-10 geannuleerd bij de

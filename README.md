@@ -23,6 +23,8 @@ met de [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk).
 - LLVM/Clang 23 (`winget install LLVM.LLVM`)
 - VS 2022 Build Tools met de workload *Desktop development with C++* (MSVC 14.44, Windows SDK 10.0.26100)
 - CMake 4.x, Ninja, Git, Python 3.12
+- LunarG Vulkan SDK (`winget install KhronosGroup.VulkanSDK`, vraagt admin), nodig voor
+  FidelityFX (CAS) op Vulkan
 
 Zet `C:\Program Files\LLVM\bin` vooraan in `PATH` voordat je bouwt.
 
@@ -36,7 +38,9 @@ python tools/xdvdfs.py extract "Need for Speed - Carbon - Collector's Edition.is
 #    vervangt git-symlinks (Windows checkt die uit als tekstbestand) en past patches toe.
 bash tools/setup-sdk.sh
 cd sdk/rexglue-sdk
-cmake --preset win-amd64 -DREXGLUE_USE_VULKAN=ON   # Vulkan staat op Windows standaard uit
+# Vulkan staat op Windows standaard uit; FidelityFX levert CAS (Remix). VULKAN_SDK moet gezet zijn.
+cmake --preset win-amd64 -DREXGLUE_USE_VULKAN=ON -DREXGLUE_ENABLE_FIDELITYFX=ON -DREXGLUE_FIDELITYFX_BACKEND=vk
+python ../../tools/fix-ffx-rc.py   # FidelityFX-resourcebestand is UTF-16; llvm-rc wil UTF-8
 cmake --build --preset win-amd64-release --target install
 cmake --build --preset win-amd64-debug --target install
 
@@ -88,6 +92,7 @@ gaan altijd voor op het profiel.
 | Interne resolutie (`draw_resolution_scale_x/y`) | 1 (1280×720) | 2 (2560×1440) |
 | Anisotrope filtering (`anisotropic_override`) | -1 (wat de game vraagt) | 5 (16×) |
 | Native 2× MSAA | aan | aan |
+| Presentatie (`present_effect`) | `bilinear` | `cas` (AMD CAS-verscherping) |
 | Framerate (`guest_vblank_rate`) | 30 fps (zoals de 360) | 60 fps |
 
 GPU-belasting (RTX 5080): Origineel ~23% in het menu (30 fps). Remix ~33% in het menu en
