@@ -33,13 +33,14 @@ struct ProfileValue {
 // "original": what the Xbox 360 shows. Accurate EDRAM emulation via fragment
 // shader interlock (Vulkan) or rasterizer ordered views (D3D12), the game's own
 // texture filtering, native 720p with the game's 2x MSAA.
-// "remix": same accurate pipeline, rendered at 2x (2560x1440) with 16x
-// anisotropic filtering. The interlocked EDRAM path is costly: on an RTX 5080
-// the main menu takes ~36% GPU at 1x, ~53% at 2x and ~90% at 3x, so 3x is left
-// as a manual option for 4K displays.
+// "remix": host render targets (fbo / rtv) instead of the interlocked EDRAM
+// path, rendered at 2x (2560x1440) with 16x anisotropic filtering. The
+// interlocked path keeps an RTX 5080 at 94-97% in races at 60 fps; host render
+// targets need ~68% and looked identical in side-by-side captures of the menu
+// and a race start (high-speed effects not compared yet).
 constexpr std::array kProfileValues = {
-    ProfileValue{"render_target_path_vulkan", "fsi", "fsi"},
-    ProfileValue{"render_target_path_d3d12", "rov", "rov"},
+    ProfileValue{"render_target_path_vulkan", "fsi", "fbo"},
+    ProfileValue{"render_target_path_d3d12", "rov", "rtv"},
     ProfileValue{"anisotropic_override", "-1", "5"},
     ProfileValue{"draw_resolution_scale_x", "1", "2"},
     ProfileValue{"draw_resolution_scale_y", "1", "2"},

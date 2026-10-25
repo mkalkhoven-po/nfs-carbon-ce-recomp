@@ -84,14 +84,17 @@ gaan altijd voor op het profiel.
 
 | Instelling | original | remix |
 |---|---|---|
-| EDRAM-emulatie (`render_target_path_vulkan`) | `fsi` (interlock, nauwkeurig) | `fsi` |
+| EDRAM-emulatie (`render_target_path_vulkan`) | `fsi` (interlock, nauwkeurig) | `fbo` (host render targets, snel) |
 | Interne resolutie (`draw_resolution_scale_x/y`) | 1 (1280×720) | 2 (2560×1440) |
 | Anisotrope filtering (`anisotropic_override`) | -1 (wat de game vraagt) | 5 (16×) |
 | Native 2× MSAA | aan | aan |
 | Framerate (`guest_vblank_rate`) | 30 fps (zoals de 360) | 60 fps |
 
-GPU-belasting in het hoofdmenu (RTX 5080): ~36% bij 1×, ~53% bij 2×, ~90% bij 3×.
-Voor een 4K-scherm kan `draw_resolution_scale_x/y = 3`, maar dat laat weinig marge.
+GPU-belasting (RTX 5080): Origineel ~23% in het menu (30 fps). Remix ~33% in het menu en
+~68% in een race (60 fps); met `fsi` zou Remix in races op 94–97% zitten. In zij-aan-zij
+vergelijkingen (menu, race-start) was `fbo` niet van `fsi` te onderscheiden; hoge snelheid
+met bewegingseffecten is nog niet vergeleken. Wie toch het nauwkeurige pad wil in Remix:
+`render_target_path_vulkan = "fsi"`. Voor een 4K-scherm kan `draw_resolution_scale_x/y = 3`.
 
 Vulkan-presentatiemodus *immediate* geeft op NVIDIA een zwart beeld; de profielen zetten
 `vulkan_allow_present_mode_immediate = false` (mailbox/FIFO werken). Smart App Control moet uit staan,

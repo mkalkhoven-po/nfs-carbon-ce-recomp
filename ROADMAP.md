@@ -43,8 +43,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   `non_argument_as_local` laat de game bij het opstarten vastlopen (r11/r12 worden buiten de
   aanroepconventie gebruikt). Winst in de race klein en ruisig (−4…+8%) omdat de GPU de
   rem is; nog niet overgenomen.
-- Open: visueel verschil `fsi` vs `fbo` beoordelen (bepaalt of Remix `fbo` mag gebruiken);
-  de interlock-shaders zelf optimaliseren.
+- Besluit (25-10): **Remix gebruikt `fbo`**, Origineel blijft `fsi`. Zij-aan-zij op 2560×1440
+  (menu en race-start, zelfde toetsenreeks): auto, vloer en gebouwen gemiddeld < 1/255
+  verschil; resterende verschillen kwamen door animatie en willekeurige tegenstanders. Geen
+  banding in glow/neon. Remix-menu nu ~33% GPU i.p.v. ~53%.
+- Open: `fsi` vs `fbo` bij hoge snelheid (bewegingsonscherpte), canyon en regen vergelijken;
+  de interlock-shaders zelf optimaliseren (alleen nog relevant voor Origineel).
 
 ### Stretch goals
 
