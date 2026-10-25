@@ -66,6 +66,13 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 - **DLSS**: vereist motion vectors, depth en jitter die de engine niet levert. Interne
   supersampling via de resolutieschaal is op moderne GPU's ruim snel genoeg en trouwer.
 
+## Wensen
+
+- [ ] **Menu-optie "Exit to desktop"** in het hoofdmenu van de game (gevraagd 25-10). Nu kan
+      afsluiten alleen met Alt+F4 of via F11 (venster) en de sluitknop. Aanpak uitzoeken: een
+      extra item in de frontend van de game (EA FE-schermen in `ZZDATA`, plus een hook op de
+      menu-actie), of als terugvaloptie een eigen pauze-overlay met "Afsluiten".
+
 ## Open problemen
 
 - Career/races nog niet getest.
