@@ -13,6 +13,7 @@ met de [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk).
 | `*.iso` | Eigen dump van de disc (XGD2) |
 | `game/` | Volledig uitgepakte disc: `default.xex`, `NFS/ZZDATA*.BIN`, `Movies/` |
 | `tools/` | `xdvdfs.py` (disc uitpakken), `xexinfo.py` (XEX-header dumpen), `setup-sdk.sh` |
+| `tools/re/` | Reverse-engineering: `strings.py`, `xrefs.py` (lis/addi-verwijzingen), `disasm.py` (disassembly uit de gegenereerde code) |
 | `sdk/rexglue-sdk/` | ReXGlue SDK v0.10.0 als git-submodule (upstream, commit `c94f5eb`) |
 | `patches/rexglue-sdk/` | Onze aanpassingen op de SDK, toegepast door `setup-sdk.sh` |
 | `nfsc/` | Het recompilatie-project |
@@ -123,7 +124,7 @@ sturen = `WASD`, gas = `E`, rem = `Q`.
 
 | Toets | Functie |
 |---|---|
-| `Alt+F4` | Afsluiten |
+| `Alt+F4` | Afsluiten (of **EXIT TO DESKTOP**, laatste optie in het hoofdmenu) |
 | `F11` | Wisselen tussen schermvullend en venster (met sluitknop) |
 | `F3` | Debug-overlay |
 | `F4` | Instellingen (alle cvars, opslaan naar `nfsc.toml`) |

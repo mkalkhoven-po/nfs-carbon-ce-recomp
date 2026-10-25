@@ -74,10 +74,11 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 ## Wensen
 
-- [ ] **Menu-optie "Exit to desktop"** in het hoofdmenu van de game (gevraagd 25-10). Nu kan
-      afsluiten alleen met Alt+F4 of via F11 (venster) en de sluitknop. Aanpak uitzoeken: een
-      extra item in de frontend van de game (EA FE-schermen in `ZZDATA`, plus een hook op de
-      menu-actie), of als terugvaloptie een eigen pauze-overlay met "Afsluiten".
+- [x] **Menu-optie "Exit to desktop"** in het hoofdmenu (gevraagd 25-10, klaar 25-10).
+      `nfsc/src/exit_option.cpp`: hooks op de menu-opbouw (`sub_82642DB0`), add-option
+      (`sub_82313658`), de taal-lookup (`sub_8231F7B8`, eigen label "EXIT TO DESKTOP") en
+      option React (`sub_8230EE18`, ID 10 sluit de game via dezelfde route als Alt+F4).
+      Mogelijke uitbreiding: dezelfde optie in het pauzemenu.
 
 ## Open problemen
 

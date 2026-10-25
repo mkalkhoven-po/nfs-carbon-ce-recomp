@@ -10,6 +10,7 @@
 #include <rex/system/gpu_plugin.h>
 #include <rex/ui/keybinds.h>
 
+#include "exit_option.h"
 #include "profiles.h"
 
 class NfscApp : public rex::ReXApp {
@@ -42,8 +43,12 @@ class NfscApp : public rex::ReXApp {
   }
 
   // F11 switches between fullscreen and a window with a title bar (and close
-  // button). Alt+F4 quits in both.
+  // button). Alt+F4 or EXIT TO DESKTOP in the main menu exits.
   void OnPostSetup() override {
+    // Same path as closing the window: terminates the title and exits.
+    nfsc::SetQuitHandler([this] {
+      app_context().CallInUIThread([this] { window()->RequestClose(); });
+    });
     rex::ui::RegisterBind("bind_fullscreen", "F11", "Toggle fullscreen", [] {
       bool fullscreen = rex::cvar::Query<bool>("fullscreen");
       rex::cvar::SetFlagByName("fullscreen", fullscreen ? "false" : "true");

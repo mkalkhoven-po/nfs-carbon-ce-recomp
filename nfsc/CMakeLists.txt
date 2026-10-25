@@ -13,6 +13,7 @@ include(generated/rexglue.cmake)
 # Sources
 set(NFSC_SOURCES
     src/main.cpp
+    src/exit_option.cpp
     src/profiles.cpp
 )
 
