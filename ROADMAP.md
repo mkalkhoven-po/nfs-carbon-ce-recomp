@@ -80,6 +80,14 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       option React (`sub_8230EE18`, ID 10 sluit de game via dezelfde route als Alt+F4).
       Mogelijke uitbreiding: dezelfde optie in het pauzemenu.
 
+## Onderzocht
+
+- **"Texture fetch constant has invalid type"** (~500 waarschuwingen per race-intro, 25-10):
+  de game samplet tijdens de intro-cutscene een texture-slot zonder texture (type invalid,
+  basisadres 0, afmeting 0). Xenia's standaard (slot negeren) geeft geen zichtbare fout;
+  `gpu_allow_invalid_fetch_constants=true` onderdrukt de waarschuwingen maar zou geheugen op
+  adres 0 als texture lezen. Standaard gelaten; onschuldig.
+
 ## Open problemen
 
 - Career/races nog niet getest.
