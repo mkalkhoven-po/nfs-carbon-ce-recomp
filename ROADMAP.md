@@ -20,8 +20,11 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 - [ ] **2. Remix (bestaande opties)**: resolutieschaal 2×/3×, anisotroop 16×, FSR/CAS,
       vsync; gebundeld in profiel "Remix".
       *Profiel staat (2×, 16× AF). FSR/CAS nog niet: vereist de experimentele build-optie
-      `REXGLUE_ENABLE_FIDELITYFX` plus de Vulkan SDK. Op een 1440p-scherm is 2× al native,
-      dus CAS (verscherpen) is de enige echte winst.*
+      `REXGLUE_ENABLE_FIDELITYFX` met `REXGLUE_FIDELITYFX_BACKEND=vk`, en de FidelityFX
+      Vulkan-backend heeft de LunarG Vulkan SDK nodig (`vulkan-1.lib`). Installatie
+      (`winget install KhronosGroup.VulkanSDK`, vraagt admin) is op 25-10 geannuleerd bij de
+      UAC-prompt. Na een mislukte configure `CMAKE_GENERATOR_PLATFORM` uit de CMake-cache
+      halen. Op een 1440p-scherm is 2× al native, dus CAS (verscherpen) is de enige echte winst.*
 - [x] **3. 60 fps**: frame-cap van de game vinden en patchen; physics, AI en FMV's testen.
       *Klaar (24-10). Er is geen 30 fps-cap in de code: de game presenteert op elke vblank
       (60 Hz) en rekent met de klok; de 360 haalde 60 gewoon niet. Nieuwe SDK-cvar
