@@ -71,8 +71,13 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       - Video's: 16:9-materiaal werd uitgerekt; SDK-patch 0004 presenteert tijdens het spelen
         van een `.wmv` in `present_movie_aspect` (16:9).
       Getest: intro-video's, titelscherm, hoofdmenu, race-intro en Quick Race (ook met Remix:
-      60 fps, ~80% GPU). Nog niet bekeken: Career/free roam, pauzemenu, wereldkaart en
-      andere FE-schermen op 21:9, splitscreen.*
+      60 fps, ~80% GPU). Op 21:9 nagelopen (28-10), alles correct (niet uitgerekt, HUD aan de
+      randen, dialogen gecentreerd): My Cars, Challenge Series, Quick Race-kaart en
+      -opties, autokeuze, crew, race-HUD met binnenspiegel, pauzemenu, herstart-dialoog,
+      Options (Audio/Video/Gameplay/Interface), Statistics, Career-menu, aliasinvoer,
+      autosave-dialogen, besturingsscherm en de Career-proloog (achtervolging door Cross,
+      "You lost"). Nog niet bekeken: free roam, wereldkaart en garage in Career (achter de
+      proloog, die je zelf moet winnen), uitslagscherm na een gewonnen race, splitscreen.*
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps
@@ -103,4 +108,5 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 ## Open problemen
 
-- Career/races nog niet getest.
+- Career voorbij de proloog nog niet getest. Savegames werken (alias en autosave in
+  `Documents\nfsc`).
