@@ -60,15 +60,22 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 - [ ] **4. Widescreen/ultrawide**: aspect ratio + FOV patchen, HUD-ankers, framebuffer
       vergroten (aanpak van de PC-widescreenfixes voor dezelfde engine als referentie).
-      *Bezig (25-10). De game rendert altijd 1280×720; een bredere videomodus
-      (`video_mode_width`) rekte dat alleen uit. `sub_8250B0D0` kiest de rendergrootte en
-      zet die in 0x82C651E8/EC en 0x82C651F0/F4; `nfsc/src/widescreen.cpp` overschrijft die
-      (`render_width`/`render_height`, experimenteel, standaard uit). Met 1680×720 is de
-      framebuffer echt 21:9 en staat de HUD correct aan de randen, maar het 3D-beeld vult
-      alleen de linker 1280 px (rechts bloom-afval): viewport/post-processing gebruiken nog
-      vaste 1280/720 in ~10 functies (o.a. `sub_824FFAB0` render targets, `sub_82621DB0`,
-      `sub_82622758`, `sub_8262E460`, `sub_8275B1E8`, `sub_82760090`, `sub_827601D8`,
-      `sub_82AA6C78`) plus float-constanten 1280.0. Daarna: projectie/FOV (hor+) controleren.*
+      *Bezig (28-10). De game rendert altijd 1280×720; een bredere videomodus
+      (`video_mode_width`) rekte dat alleen uit. `nfsc/src/widescreen.cpp` (cvars
+      `render_width`/`render_height`, experimenteel, standaard uit):
+      - `sub_8250B0D0` en `sub_82500168` zetten de rendergrootte in 0x82C651E8/EC en
+        0x82C651F0/F4; overschreven na beide. Framebuffer wordt echt 1680×720.
+      - `sub_824FFAB0` bouwt een layout-object met viewport- en tile-rechthoeken (1280 breed);
+        alle 1280 worden de nieuwe breedte. Daarmee vullen HUD én 3D-beeld de volle breedte
+        en is het beeld niet meer uitgerekt (hor+ lijkt vanzelf te werken).
+      - **Blokkade: EDRAM.** De hoofdscène rendert met 4× MSAA (bevestigd via RB_SURFACE_INFO)
+        in drie predicated tiles van 1280×256 = precies 10 MiB. Elke extra breedte overloopt
+        → zwarte horizontale banden (al zichtbaar vanaf 1360 breed).
+      - Opties: (a) die surface met 2× MSAA renderen (de layout heeft al een 2-tile-set van
+        368 regels, past tot ~1780 breed); de plek waar 4× gekozen wordt is nog niet gevonden
+        (velden +16/+76 van het layout-object waren het niet). (b) Meer tiles (4 × 192 regels
+        bij 1680), vraagt de tiling-aanroep en het aantal tiles te patchen. (c) De emulator een
+        grotere virtuele EDRAM geven; grote ingreep in de GPU-emulatie.*
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps
