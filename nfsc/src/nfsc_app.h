@@ -12,6 +12,7 @@
 
 #include "exit_option.h"
 #include "profiles.h"
+#include "widescreen.h"
 
 class NfscApp : public rex::ReXApp {
  public:
@@ -40,6 +41,7 @@ class NfscApp : public rex::ReXApp {
       }
     }
     nfsc::ApplyProfile();
+    nfsc::ApplyWidescreen();
   }
 
   // F11 switches between fullscreen and a window with a title bar (and close

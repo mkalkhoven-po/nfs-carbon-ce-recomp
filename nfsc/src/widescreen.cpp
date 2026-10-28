@@ -1,10 +1,8 @@
-// nfsc - custom render resolution (widescreen / ultrawide), work in progress.
+// nfsc - widescreen / ultrawide rendering (aspect_ratio, e.g. 21:9 or 32:9).
 //
-// Status: with a wider render size the front buffer, HUD and 3D viewport all
-// widen, but the main scene shows black bands: it renders with 4x MSAA in three
-// predicated tiles of 1280x256, which fill the 10 MiB EDRAM exactly (32 bytes
-// per pixel), so any extra width overflows. Next step: render that surface with
-// 2x MSAA, or use more tiles.
+// A wider render size widens the front buffer, HUD and 3D viewport. The main
+// scene's 4x MSAA tiles (1280x256) fill the 10 MiB EDRAM exactly, so wider
+// tiles drop to 2x MSAA (see the descriptor hook at the end).
 //
 // Reverse engineered from default.xex (title 454107EC, v0.0.0.7):
 //   sub_8250B0D0  picks the render size from the video mode: widescreen with a
@@ -15,13 +13,23 @@
 //                 (e.g. from sub_824E94E8), so the override is reapplied there.
 
 #include <cstdint>
+#include <cstdio>
+#include <string>
 
 #include <rex/cvar.h>
 #include <rex/hook.h>
 #include <rex/logging.h>
 
+#include "profiles.h"
+#include "widescreen.h"
+
+REXCVAR_DEFINE_STRING(aspect_ratio, "16:9", "NFSC",
+                      "Screen aspect ratio for the game's 3D view and HUD, e.g. 16:9 (the game's "
+                      "own), 21:9 or 32:9. Wider ratios render at 720 * W/H x 720.")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
 REXCVAR_DEFINE_INT32(render_width, 0, "NFSC",
-                     "Game render width in pixels (0 = the game's own 1280); experimental")
+                     "Game render width in pixels (0 = from aspect_ratio)")
     .range(0, 3840)
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
@@ -105,3 +113,59 @@ REX_HOOK_RAW(sub_824FFAB0) {
   }
   REXLOG_INFO("nfsc: widened {} view layout values to {}", replaced, width);
 }
+
+// Render target descriptors: sub_82505998 registers a 208-byte descriptor
+// (+8 width, +12 height, +36 MSAA: 0 none, 1 = 2x, 2 = 4x) in a table at
+// 0x82D5B250. The main scene uses 1280x256 tiles with 4x MSAA, which fill the
+// 10 MiB EDRAM exactly; wider tiles overflow it. When widening, drop such
+// descriptors to 2x MSAA so the same tile layout fits again.
+REX_EXTERN(__imp__sub_82505998);
+REX_HOOK_RAW(sub_82505998) {
+  const uint32_t desc = ctx.r5.u32;
+  if (REXCVAR_GET(render_width) > 1280 && desc != 0) {
+    constexpr uint64_t kEdramBytes = 10 * 1024 * 1024;
+    constexpr uint64_t kBytesPerSample = 8;  // 32-bit color + 32-bit depth
+    const uint32_t width = LoadU32(base, desc + 8);
+    const uint32_t height = LoadU32(base, desc + 12);
+    const uint32_t msaa = LoadU32(base, desc + 36);
+    if (msaa == 2 && uint64_t(width) * height * 4 * kBytesPerSample > kEdramBytes) {
+      StoreU32(base, desc + 36, 1);
+      REXLOG_INFO("nfsc: {}x{} render target 4x -> 2x MSAA to fit EDRAM", width, height);
+    }
+  }
+  __imp__sub_82505998(ctx, base);
+}
+
+namespace nfsc {
+
+void ApplyWidescreen() {
+  unsigned aspect_x = 16, aspect_y = 9;
+  const std::string& aspect = REXCVAR_GET(aspect_ratio);
+  if (std::sscanf(aspect.c_str(), "%u:%u", &aspect_x, &aspect_y) != 2 || !aspect_x || !aspect_y) {
+    REXLOG_WARN("nfsc: invalid aspect_ratio '{}', using 16:9", aspect);
+    aspect_x = 16;
+    aspect_y = 9;
+  }
+  // Width at the game's 720 lines, rounded to a multiple of 8. Narrower than
+  // 16:9 is not supported (the game would have to shrink its 1280 layout).
+  uint32_t width = (720 * aspect_x / aspect_y + 4) / 8 * 8;
+  if (width <= 1280) {
+    return;
+  }
+  // 2x MSAA tiles of 256 lines fit the 10 MiB EDRAM up to 2560 pixels.
+  if (width > 2560) {
+    REXLOG_WARN("nfsc: aspect_ratio {} needs {} px, limited to 2560", aspect, width);
+    width = 2560;
+  }
+  const std::string width_text = std::to_string(width);
+  SetCvarDefault("render_width", width_text);
+  // The guest video mode drives the presenter's aspect ratio.
+  SetCvarDefault("video_mode_width", std::to_string(REXCVAR_GET(render_width)));
+  SetCvarDefault("video_mode_height", "720");
+  // Movies are 16:9 and drawn stretched across the wider frame; present them at
+  // 16:9 (pillarboxed on a wide screen).
+  SetCvarDefault("present_movie_aspect", "16:9");
+  REXLOG_INFO("nfsc: aspect ratio {} -> render {}x720", aspect, REXCVAR_GET(render_width));
+}
+
+}  // namespace nfsc

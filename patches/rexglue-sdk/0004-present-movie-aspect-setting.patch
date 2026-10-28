@@ -1,0 +1,176 @@
+diff --git a/include/rex/kernel/xboxkrnl/video.h b/include/rex/kernel/xboxkrnl/video.h
+index 0b9bd41..7b25e4c 100644
+--- a/include/rex/kernel/xboxkrnl/video.h
++++ b/include/rex/kernel/xboxkrnl/video.h
+@@ -26,6 +26,11 @@ namespace rex::kernel::xboxkrnl {
+ 
+ void VdQueryVideoMode(system::X_VIDEO_MODE* video_mode);
+ 
++// Display size the presenter should assume for the guest output: the video mode,
++// or, while a movie (.wmv) is open and present_movie_aspect is set (e.g. "16:9"),
++// that aspect ratio at the video mode's height.
++void GetPresentDisplaySize(uint32_t* width, uint32_t* height);
++
+ // Register video variable exports (VdGlobalDevice, VdHSIOCalibrationLock, etc.)
+ // Must be called during kernel initialization before XEX modules are loaded.
+ void RegisterVideoExports(rex::runtime::ExportResolver* export_resolver,
+diff --git a/include/rex/system/xfile.h b/include/rex/system/xfile.h
+index 6063f3c..48b0ead 100644
+--- a/include/rex/system/xfile.h
++++ b/include/rex/system/xfile.h
+@@ -66,6 +66,9 @@ class X_FILE_DIRECTORY_INFORMATION {
+   }
+ };
+ 
++// Number of open guest files ending in .wmv (movies being played).
++int OpenMovieFileCount();
++
+ class XFile : public XObject {
+  public:
+   static const XObject::Type kObjectType = XObject::Type::File;
+@@ -144,6 +147,7 @@ class XFile : public XObject {
+   rex::filesystem::WildcardEngine find_engine_;
+   size_t find_index_ = 0;
+ 
++  bool is_movie_ = false;
+   bool is_synchronous_ = false;
+ };
+ 
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+index 19874a5..fd2cc90 100644
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -1980,10 +1980,8 @@ void D3D12CommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontbu
+     }
+   }
+ 
+-  system::X_VIDEO_MODE video_mode;
+-  kernel::xboxkrnl::VdQueryVideoMode(&video_mode);
+-  uint32_t display_width = std::max(uint32_t(1), uint32_t(video_mode.display_width));
+-  uint32_t display_height = std::max(uint32_t(1), uint32_t(video_mode.display_height));
++  uint32_t display_width, display_height;
++  kernel::xboxkrnl::GetPresentDisplaySize(&display_width, &display_height);
+ 
+   presenter->RefreshGuestOutput(
+       guest_output_width, guest_output_height, display_width, display_height,
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 001f36b..4903e7a 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -2403,10 +2403,8 @@ void VulkanCommandProcessor::IssueSwap(uint32_t frontbuffer_ptr, uint32_t frontb
+       frontbuffer_height_unscaled, guest_output_width, guest_output_height,
+       static_cast<uint32_t>(frontbuffer_format));
+ 
+-  system::X_VIDEO_MODE video_mode;
+-  kernel::xboxkrnl::VdQueryVideoMode(&video_mode);
+-  uint32_t display_width = std::max(uint32_t(1), uint32_t(video_mode.display_width));
+-  uint32_t display_height = std::max(uint32_t(1), uint32_t(video_mode.display_height));
++  uint32_t display_width, display_height;
++  kernel::xboxkrnl::GetPresentDisplaySize(&display_width, &display_height);
+ 
+   presenter->RefreshGuestOutput(
+       guest_output_width, guest_output_height, display_width, display_height,
+diff --git a/src/system/xfile.cpp b/src/system/xfile.cpp
+index 4179e8b..e5ec71c 100644
+--- a/src/system/xfile.cpp
++++ b/src/system/xfile.cpp
+@@ -14,19 +14,36 @@
+ #include <rex/math.h>
+ #include <rex/memory.h>
+ #include <rex/stream.h>
++#include <rex/string/utf8.h>
+ #include <rex/system/kernel_state.h>
+ #include <rex/system/xevent.h>
+ #include <rex/system/xfile.h>
+ #include <rex/thread/mutex.h>
+ 
++#include <atomic>
+ #include <span>
+ 
+ namespace rex::system {
+ 
++namespace {
++std::atomic<int> g_open_movie_files{0};
++}  // namespace
++
++int OpenMovieFileCount() {
++  return g_open_movie_files.load(std::memory_order_relaxed);
++}
++
+ XFile::XFile(KernelState* kernel_state, rex::filesystem::File* file, bool synchronous)
+     : XObject(kernel_state, kObjectType), file_(file), is_synchronous_(synchronous) {
+   async_event_ = rex::thread::Event::CreateAutoResetEvent(false);
+   assert_not_null(async_event_);
++  const std::string& file_path = path();
++  if (file_path.size() >= 4 &&
++      rex::string::utf8_equal_case(std::string_view(file_path).substr(file_path.size() - 4),
++                                   ".wmv")) {
++    is_movie_ = true;
++    g_open_movie_files.fetch_add(1, std::memory_order_relaxed);
++  }
+ }
+ 
+ XFile::XFile() : XObject(kObjectType) {
+@@ -35,6 +52,9 @@ XFile::XFile() : XObject(kObjectType) {
+ }
+ 
+ XFile::~XFile() {
++  if (is_movie_) {
++    g_open_movie_files.fetch_sub(1, std::memory_order_relaxed);
++  }
+   // TODO(benvanik): signal that the file is closing?
+   async_event_->Set();
+   file_->Destroy();
+--- a/src/kernel/xboxkrnl/xboxkrnl_video.cpp	2026-10-28 22:21:26.981239300 +0100
++++ b/src/kernel/xboxkrnl/xboxkrnl_video.cpp	2026-10-28 22:21:27.001153300 +0100
+@@ -15,6 +15,7 @@
+ #include <algorithm>
+ #include <atomic>
+ #include <chrono>
++#include <cstdio>
+ #include <string>
+ 
+ #include <rex/cvar.h>
+@@ -31,6 +32,7 @@
+ #include <rex/runtime.h>
+ #include <rex/system/export_resolver.h>
+ #include <rex/system/kernel_state.h>
++#include <rex/system/xfile.h>
+ #include <rex/system/xtypes.h>
+ #include <rex/ui/flags.h>
+ 
+@@ -86,6 +88,12 @@
+ }
+ }  // namespace
+ 
++REXCVAR_DEFINE_STRING(present_movie_aspect, "", "UI/Presenter",
++                      "Aspect ratio to present while a movie (.wmv) plays, e.g. 16:9; empty = "
++                      "that of the video mode. For games that stretch 16:9 movies to a wider "
++                      "render size.")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ REXCVAR_DEFINE_INT32(log_swap_rate, 0, "GPU",
+                      "Log the guest swap (presented frame) rate every N seconds; 0 = off")
+     .range(0, 60)
+@@ -252,6 +260,21 @@
+   video_mode->unknown_0x01 = 0x01;
+ }
+ 
++void GetPresentDisplaySize(uint32_t* width, uint32_t* height) {
++  X_VIDEO_MODE mode;
++  VdQueryVideoMode(&mode);
++  *width = std::max(uint32_t(1), uint32_t(mode.display_width));
++  *height = std::max(uint32_t(1), uint32_t(mode.display_height));
++  if (rex::system::OpenMovieFileCount() <= 0) {
++    return;
++  }
++  const std::string& aspect = REXCVAR_GET(present_movie_aspect);
++  unsigned aspect_x = 0, aspect_y = 0;
++  if (std::sscanf(aspect.c_str(), "%u:%u", &aspect_x, &aspect_y) == 2 && aspect_x && aspect_y) {
++    *width = std::max(uint32_t(1), uint32_t(uint64_t(*height) * aspect_x / aspect_y));
++  }
++}
++
+ void VdQueryVideoMode_entry(ppc_ptr_t<X_VIDEO_MODE> video_mode) {
+   VdQueryVideoMode(video_mode);
+ }

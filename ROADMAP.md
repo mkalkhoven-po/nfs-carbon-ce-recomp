@@ -58,24 +58,21 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 ### Stretch goals
 
-- [ ] **4. Widescreen/ultrawide**: aspect ratio + FOV patchen, HUD-ankers, framebuffer
-      vergroten (aanpak van de PC-widescreenfixes voor dezelfde engine als referentie).
-      *Bezig (28-10). De game rendert altijd 1280×720; een bredere videomodus
-      (`video_mode_width`) rekte dat alleen uit. `nfsc/src/widescreen.cpp` (cvars
-      `render_width`/`render_height`, experimenteel, standaard uit):
-      - `sub_8250B0D0` en `sub_82500168` zetten de rendergrootte in 0x82C651E8/EC en
-        0x82C651F0/F4; overschreven na beide. Framebuffer wordt echt 1680×720.
-      - `sub_824FFAB0` bouwt een layout-object met viewport- en tile-rechthoeken (1280 breed);
-        alle 1280 worden de nieuwe breedte. Daarmee vullen HUD én 3D-beeld de volle breedte
-        en is het beeld niet meer uitgerekt (hor+ lijkt vanzelf te werken).
-      - **Blokkade: EDRAM.** De hoofdscène rendert met 4× MSAA (bevestigd via RB_SURFACE_INFO)
-        in drie predicated tiles van 1280×256 = precies 10 MiB. Elke extra breedte overloopt
-        → zwarte horizontale banden (al zichtbaar vanaf 1360 breed).
-      - Opties: (a) die surface met 2× MSAA renderen (de layout heeft al een 2-tile-set van
-        368 regels, past tot ~1780 breed); de plek waar 4× gekozen wordt is nog niet gevonden
-        (velden +16/+76 van het layout-object waren het niet). (b) Meer tiles (4 × 192 regels
-        bij 1680), vraagt de tiling-aanroep en het aantal tiles te patchen. (c) De emulator een
-        grotere virtuele EDRAM geven; grote ingreep in de GPU-emulatie.*
+- [x] **4. Widescreen/ultrawide**: aspect ratio + FOV patchen, HUD-ankers, framebuffer
+      vergroten. *Werkt (28-10) met `aspect_ratio` (21:9, 32:9, eigen B:H), in
+      `nfsc/src/widescreen.cpp`:
+      - Rendergrootte: `sub_8250B0D0` en `sub_82500168` zetten 1280×720 in 0x82C651E8/EC en
+        0x82C651F0/F4; overschreven na beide.
+      - Layout: `sub_824FFAB0` bouwt viewport- en tile-rechthoeken met x1 = 1280; verbreed.
+        Daarmee vullen 3D en HUD de breedte, hor+ werkt vanzelf, HUD ankert aan de randen.
+      - EDRAM: de hoofdscène gebruikt 4× MSAA-tiles van 1280×256 (precies 10 MiB); descriptors
+        worden geregistreerd via `sub_82505998` (tabel 0x82D5B250, +36 = MSAA). Tiles die bij
+        4× niet passen gaan naar 2× → geen banden; maximaal 2560 breed (32:9).
+      - Video's: 16:9-materiaal werd uitgerekt; SDK-patch 0004 presenteert tijdens het spelen
+        van een `.wmv` in `present_movie_aspect` (16:9).
+      Getest: intro-video's, titelscherm, hoofdmenu, race-intro en Quick Race (ook met Remix:
+      60 fps, ~80% GPU). Nog niet bekeken: Career/free roam, pauzemenu, wereldkaart en
+      andere FE-schermen op 21:9, splitscreen.*
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps

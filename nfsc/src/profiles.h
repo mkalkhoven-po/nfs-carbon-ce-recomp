@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 namespace nfsc {
 
@@ -10,6 +11,10 @@ namespace nfsc {
 // Cvars set in nfsc.toml, the environment or on the command line keep their
 // value. Must run after the config is loaded and before the GPU is created.
 void ApplyProfile();
+
+// Sets a cvar's default value unless the user set it (config, environment,
+// command line). Returns false if the cvar does not exist.
+bool SetCvarDefault(std::string_view name, std::string_view value);
 
 // Name of the active profile ("original" or "remix").
 std::string ActiveProfile();

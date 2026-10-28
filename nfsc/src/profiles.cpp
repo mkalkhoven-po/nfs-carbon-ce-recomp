@@ -71,28 +71,27 @@ std::string GpuBackend() {
   return REXCVAR_GET(gpu_backend);
 }
 
+bool SetCvarDefault(std::string_view name, std::string_view value) {
+  for (auto& entry : rex::cvar::GetRegistry()) {
+    if (entry.name != name)
+      continue;
+    // Leave values the user chose alone. Changing the default itself (not just
+    // the value) keeps the settings dialog from saving it into nfsc.toml and
+    // makes "reset to default" return to it.
+    if (entry.source == rex::cvar::Source::kDefault) {
+      entry.default_value = std::string(value);
+      entry.setter(value);
+    }
+    return true;
+  }
+  REXLOG_WARN("nfsc: cvar '{}' does not exist", name);
+  return false;
+}
+
 void ApplyProfile() {
   const bool remix = ActiveProfile() == "remix";
-  auto& registry = rex::cvar::GetRegistry();
   for (const auto& value : kProfileValues) {
-    std::string_view wanted = remix ? value.remix : value.original;
-    bool found = false;
-    for (auto& entry : registry) {
-      if (entry.name != value.cvar)
-        continue;
-      found = true;
-      // Leave values the user chose alone. Changing the default itself (not
-      // just the value) keeps the settings dialog from saving profile values
-      // into nfsc.toml and makes "reset to default" return to the profile.
-      if (entry.source == rex::cvar::Source::kDefault) {
-        entry.default_value = std::string(wanted);
-        entry.setter(wanted);
-      }
-      break;
-    }
-    if (!found) {
-      REXLOG_WARN("nfsc: profile cvar '{}' does not exist", value.cvar);
-    }
+    SetCvarDefault(value.cvar, remix ? value.remix : value.original);
   }
   REXLOG_INFO("nfsc: graphics profile '{}', GPU backend '{}'", ActiveProfile(), GpuBackend());
 }
