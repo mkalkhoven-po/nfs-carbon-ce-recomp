@@ -1,0 +1,39 @@
+--- a/include/rex/kernel/xboxkrnl/video.h
++++ b/include/rex/kernel/xboxkrnl/video.h
+@@ -31,6 +31,11 @@
+ // that aspect ratio at the video mode's height.
+ void GetPresentDisplaySize(uint32_t* width, uint32_t* height);
+ 
++// Makes GetPresentDisplaySize use present_movie_aspect as if a movie were open,
++// for other full-screen content a title stretches the same way (e.g. loading
++// screens authored for 16:9).
++void SetPresentAspectOverride(bool active);
++
+ // Register video variable exports (VdGlobalDevice, VdHSIOCalibrationLock, etc.)
+ // Must be called during kernel initialization before XEX modules are loaded.
+ void RegisterVideoExports(rex::runtime::ExportResolver* export_resolver,
+--- a/src/kernel/xboxkrnl/xboxkrnl_video.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+@@ -260,12 +260,21 @@
+   video_mode->unknown_0x01 = 0x01;
+ }
+ 
++namespace {
++std::atomic<bool> g_present_aspect_override{false};
++}  // namespace
++
++void SetPresentAspectOverride(bool active) {
++  g_present_aspect_override.store(active, std::memory_order_relaxed);
++}
++
+ void GetPresentDisplaySize(uint32_t* width, uint32_t* height) {
+   X_VIDEO_MODE mode;
+   VdQueryVideoMode(&mode);
+   *width = std::max(uint32_t(1), uint32_t(mode.display_width));
+   *height = std::max(uint32_t(1), uint32_t(mode.display_height));
+-  if (rex::system::OpenMovieFileCount() <= 0) {
++  if (rex::system::OpenMovieFileCount() <= 0 &&
++      !g_present_aspect_override.load(std::memory_order_relaxed)) {
+     return;
+   }
+   const std::string& aspect = REXCVAR_GET(present_movie_aspect);

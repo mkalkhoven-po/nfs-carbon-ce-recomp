@@ -70,14 +70,15 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         4× niet passen gaan naar 2× → geen banden; maximaal 2560 breed (32:9).
       - Video's: 16:9-materiaal werd uitgerekt; SDK-patch 0004 presenteert tijdens het spelen
         van een `.wmv` in `present_movie_aspect` (16:9).
+      - Laadschermen (`Loading*.fng`) tekent de game over de volle breedte uitgerekt; zolang
+        zo'n FE-pakket actief is presenteert de app op 16:9 (SDK-patch 0005), net als video's.
       Getest: intro-video's, titelscherm, hoofdmenu, race-intro en Quick Race (ook met Remix:
-      60 fps, ~80% GPU). Op 21:9 nagelopen (28-10), alles correct (niet uitgerekt, HUD aan de
-      randen, dialogen gecentreerd): My Cars, Challenge Series, Quick Race-kaart en
-      -opties, autokeuze, crew, race-HUD met binnenspiegel, pauzemenu, herstart-dialoog,
-      Options (Audio/Video/Gameplay/Interface), Statistics, Career-menu, aliasinvoer,
-      autosave-dialogen, besturingsscherm en de Career-proloog (achtervolging door Cross,
-      "You lost"). Nog niet bekeken: free roam, wereldkaart en garage in Career (achter de
-      proloog, die je zelf moet winnen), uitslagscherm na een gewonnen race, splitscreen.*
+      60 fps, ~80% GPU). Op 21:9 nagelopen (28/29-10), alles correct (niet uitgerekt, HUD aan
+      de randen, dialogen gecentreerd): My Cars, Challenge Series, Quick Race-kaart en -opties,
+      autokeuze, crew, race-HUD met binnenspiegel, pauzemenu, Options, Statistics, Career-menu,
+      aliasinvoer, autosave-dialogen, besturingsscherm, proloog, safehouse, wereldkaart,
+      Customization (Performance, winkelwagen), free roam met SMS, pauzemenu en Photo Mode,
+      laadschermen. Nog niet bekeken: uitslagscherm na een gewonnen race, splitscreen.*
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps
@@ -96,7 +97,8 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       `nfsc/src/exit_option.cpp`: hooks op de menu-opbouw (`sub_82642DB0`), add-option
       (`sub_82313658`), de taal-lookup (`sub_8231F7B8`, eigen label "EXIT TO DESKTOP") en
       option React (`sub_8230EE18`, ID 10 sluit de game via dezelfde route als Alt+F4).
-      Mogelijke uitbreiding: dezelfde optie in het pauzemenu.
+      Herkend aan het eigen label: ID 10 is in het pauzemenu PHOTO MODE (die sloot eerst de
+      game af, gevonden en opgelost 29-10). Mogelijke uitbreiding: de optie in het pauzemenu.
 
 ## Onderzocht
 

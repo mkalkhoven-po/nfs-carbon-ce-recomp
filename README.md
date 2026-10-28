@@ -55,6 +55,8 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+- `0005-present-aspect-override.patch` (`xboxkrnl_video`): `SetPresentAspectOverride()`
+  laat de app hetzelfde doen voor ander 16:9-materiaal (Carbon: de laadschermen).
 - `0004-present-movie-aspect-setting.patch` (`xfile`, `xboxkrnl_video`, command processors):
   telt open `.wmv`-bestanden; zolang er een video speelt presenteert de runtime in
   `present_movie_aspect` (bv. `16:9`) in plaats van de verhouding van de videomodus.
@@ -109,7 +111,7 @@ met bewegingseffecten is nog niet vergeleken. Wie toch het nauwkeurige pad wil i
 
 `--aspect_ratio=21:9` (of `32:9`, of een eigen `B:H`; standaard `16:9`) laat de game in die
 verhouding renderen: 3D-beeld (meer zicht opzij, niet uitgerekt) en HUD aan de randen.
-Video's blijven 16:9 (op een breed scherm met zwarte balken). Op een 16:9-scherm zie je het
+Video's en laadschermen blijven 16:9 (op een breed scherm met zwarte balken). Op een 16:9-scherm zie je het
 beeld in letterbox. Rendert op 720 × B/H breed (21:9 = 1680, 32:9 = 2560, maximum); de
 hoofdscène gaat dan van 4× naar 2× MSAA om in de EDRAM te passen. Smaller dan 16:9 kan niet.
 Remix (2×) met 21:9 haalt 60 fps in races bij ~80% GPU (RTX 5080).

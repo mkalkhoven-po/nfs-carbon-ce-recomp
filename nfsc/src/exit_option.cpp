@@ -36,7 +36,9 @@ constexpr uint32_t kOptionsId = 7;
 // below answers it.
 constexpr uint32_t kExitLabel = 0x4E465843;  // "NFXC"
 constexpr char kExitText[] = "EXIT TO DESKTOP";
-constexpr uint32_t kExitId = 10;  // unused by the game (0-9)
+// Unused in the main menu (0-9), but the pause menu uses 10 for PHOTO MODE, so
+// React() below recognizes our option by its label.
+constexpr uint32_t kExitId = 10;
 constexpr uint32_t kAcceptMessage = 0x0C407210;
 constexpr uint32_t kOptionSize = 152;
 constexpr uint32_t kOptionLabelOffset = 44;
@@ -140,6 +142,7 @@ REX_HOOK_RAW(sub_8231F7B8) {
 REX_HOOK_RAW(sub_8230EE18) {
   const uint32_t option = ctx.r3.u32;
   if (ctx.r5.u32 == kAcceptMessage && base[option + kOptionEnabledOffset] != 0 &&
+      LoadU32(base, option + kOptionLabelOffset) == kExitLabel &&
       LoadU32(base, option + kOptionIdOffset) == kExitId) {
     REXLOG_INFO("nfsc: EXIT TO DESKTOP selected in the main menu");
     if (g_quit_handler) {

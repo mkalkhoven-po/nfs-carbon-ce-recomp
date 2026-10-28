@@ -18,6 +18,7 @@
 
 #include <rex/cvar.h>
 #include <rex/hook.h>
+#include <rex/kernel/xboxkrnl/video.h>
 #include <rex/logging.h>
 
 #include "profiles.h"
@@ -134,6 +135,61 @@ REX_HOOK_RAW(sub_82505998) {
     }
   }
   __imp__sub_82505998(ctx, base);
+}
+
+namespace {
+
+// Loading screens (Loading.fng, Loading_Tips.fng, Loading_Controller.fng,
+// loading_boot.fng) are drawn stretched across the whole render width, unlike
+// the other FE packages. While one is active, present the frame at 16:9 (as
+// for movies), which undoes the stretch. The FE package list hangs off the FE
+// manager at 0x82C64ACC: *manager + 216 is the list, +12 its first package;
+// per package +8 next, +12 name, +32 active (see sub_822FDEE8).
+bool LoadingScreenActive(uint8_t* base) {
+  const uint32_t manager = LoadU32(base, 0x82C64ACC);
+  if (!manager) {
+    return false;
+  }
+  const uint32_t engine = LoadU32(base, manager);
+  if (!engine) {
+    return false;
+  }
+  uint32_t package = LoadU32(base, engine + 216 + 12);
+  for (int i = 0; package && i < 64; ++i, package = LoadU32(base, package + 8)) {
+    if (!LoadU32(base, package + 32)) {
+      continue;
+    }
+    const uint32_t name = LoadU32(base, package + 12);
+    if (!name) {
+      continue;
+    }
+    const char* text = reinterpret_cast<const char*>(base + name);
+    bool match = true;
+    for (int c = 0; c < 7 && match; ++c) {
+      match = (text[c] | 0x20) == "loading"[c];
+    }
+    if (match) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+// sub_826E3860 presents a frame (it calls VdSwap).
+REX_EXTERN(__imp__sub_826E3860);
+REX_HOOK_RAW(sub_826E3860) {
+  if (REXCVAR_GET(render_width) > 1280) {
+    static bool loading = false;
+    const bool now = LoadingScreenActive(base);
+    if (now != loading) {
+      loading = now;
+      rex::kernel::xboxkrnl::SetPresentAspectOverride(now);
+      REXLOG_INFO("nfsc: loading screen {}", now ? "shown, presenting at 16:9" : "hidden");
+    }
+  }
+  __imp__sub_826E3860(ctx, base);
 }
 
 namespace nfsc {
