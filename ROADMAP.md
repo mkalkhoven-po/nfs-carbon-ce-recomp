@@ -45,10 +45,10 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   naar 56); met `fbo` op ~68%.
 - CPU-profiel (eigen sampling-profiler): de game-threads staan ~1/3 te slapen/yielden en
   ~22% in de D3D-"wacht op GPU"-lus (`sub_826E0088`); ze wachten dus vooral op de GPU.
-- Codegen-opties: `ctr/xer/cr/reserved/non_volatile_as_local` werken;
+- Codegen-opties: `ctr/xer/cr/reserved/non_volatile_as_local` werken (sinds 29-10 aan);
   `non_argument_as_local` laat de game bij het opstarten vastlopen (r11/r12 worden buiten de
   aanroepconventie gebruikt). Winst in de race klein en ruisig (−4…+8%) omdat de GPU de
-  rem is; nog niet overgenomen.
+  rem was; op 29-10 met een vaste benchmark opnieuw gemeten en overgenomen (zie stretch goal 5).
 - Besluit (25-10): **Remix gebruikt `fbo`**, Origineel blijft `fsi`. Zij-aan-zij op 2560×1440
   (menu en race-start, zelfde toetsenreeks): auto, vloer en gebouwen gemiddeld < 1/255
   verschil; resterende verschillen kwamen door animatie en willekeurige tegenstanders. Geen
@@ -119,9 +119,18 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         menu op 240 ~140. Nu CPU-gebonden: de twee game-threads (render en een tweede) zitten op
         ~98%, de GPU-thread op ~57%; ~10–15k schrijffouten/s op beschermde pagina's.
       - Stabiliteit: 5 runs (2× 120, 3× 240) zonder Xid 13.
-      - Verder sneller kan alleen aan de CPU-kant: codegen-opties (`ctr/xer/cr_as_local` enz.,
-        eerder ruisig omdat de GPU de rem was), of minder schrijffouten (pagina's die elk frame
-        opnieuw beschreven worden niet meer beschermen maar op inhoud vergelijken).*
+      - CPU-kant (29-10, benchmark: Quick Race zonder gas op 1000 Hz, menu-mediaan stabiel
+        ±1%, race ±7%): codegen-opties `ctr/xer/cr/reserved/non_volatile_as_local` aan in
+        `nfsc_manifest.toml`: menu 172 → 175, race 110 → 115 (klein, binnen ruis voor de race).
+        Upload-ahead opnieuw geprobeerd (16/64 pagina's): menu 3–5% trager, race niet beter.
+      - Profiel (`-O3`, PDB's via `-Wl,/DEBUG`): game-thread slaapt ~75%, render-thread wacht
+        ~57% in de GPU-wachtlus `sub_826E0088`, GPU-thread (command processor) ~80% bezig:
+        ~15% `NtProtectVirtualMemory` (pagina's beschermen na elke upload, ~90.000/s), ~15%
+        driver, de rest PM4-verwerking verspreid. De command processor is nu de rem.
+      - Volgende stap als het sneller moet: pagina's die elk frame opnieuw beschreven worden
+        ("hot") niet meer beschermen maar bij elke aanvraag op inhoud vergelijken met een
+        schaduwkopie; scheelt VirtualProtect-calls en schrijffouten. Raakt de watches van de
+        texture cache en GPU-geschreven pagina's, dus diepe SDK-wijziging.*
 
 ### Bewust niet
 
