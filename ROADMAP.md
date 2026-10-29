@@ -45,10 +45,11 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   naar 56); met `fbo` op ~68%.
 - CPU-profiel (eigen sampling-profiler): de game-threads staan ~1/3 te slapen/yielden en
   ~22% in de D3D-"wacht op GPU"-lus (`sub_826E0088`); ze wachten dus vooral op de GPU.
-- Codegen-opties: `ctr/xer/cr/reserved/non_volatile_as_local` werken (sinds 29-10 aan);
+- Codegen-opties: `ctr/xer/cr/reserved/non_volatile_as_local` lijken te werken, maar maken de
+  video's (FMV's) kapot: groene/paarse blokken (gezien 29-10; eerdere tests sloegen de video's over). Uit;
   `non_argument_as_local` laat de game bij het opstarten vastlopen (r11/r12 worden buiten de
   aanroepconventie gebruikt). Winst in de race klein en ruisig (−4…+8%) omdat de GPU de
-  rem was; op 29-10 met een vaste benchmark opnieuw gemeten en overgenomen (zie stretch goal 5).
+  rem was; op 29-10 opnieuw gemeten (+1–2%), maar niet overgenomen vanwege de video's.
 - Besluit (25-10): **Remix gebruikt `fbo`**, Origineel blijft `fsi`. Zij-aan-zij op 2560×1440
   (menu en race-start, zelfde toetsenreeks): auto, vloer en gebouwen gemiddeld < 1/255
   verschil; resterende verschillen kwamen door animatie en willekeurige tegenstanders. Geen
@@ -120,8 +121,9 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         ~98%, de GPU-thread op ~57%; ~10–15k schrijffouten/s op beschermde pagina's.
       - Stabiliteit: 5 runs (2× 120, 3× 240) zonder Xid 13.
       - CPU-kant (29-10, benchmark: Quick Race zonder gas op 1000 Hz, menu-mediaan stabiel
-        ±1%, race ±7%): codegen-opties `ctr/xer/cr/reserved/non_volatile_as_local` aan in
-        `nfsc_manifest.toml`: menu 172 → 175, race 110 → 115 (klein, binnen ruis voor de race).
+        ±1%, race ±7%): codegen-opties `ctr/xer/cr/reserved/non_volatile_as_local`: menu 172 →
+        175, race 110 → 115. Weer uitgezet: ze maken de video's kapot (de cijfers hieronder zijn
+        nog met de opties gemeten, dus ~1–2% te hoog).
         Upload-ahead opnieuw geprobeerd (16/64 pagina's): menu 3–5% trager, race niet beter.
       - Profiel (`-O3`, PDB's via `-Wl,/DEBUG`): game-thread slaapt ~75%, render-thread wacht
         ~57% in de GPU-wachtlus `sub_826E0088`, GPU-thread (command processor) ~80% bezig:
@@ -144,7 +146,10 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         en zonder hot pages vrijwel frame voor frame gelijk afgespeeld: zonder 82,3 fps gemiddeld
         (minimum 57), met 97,7 (minimum 67), beeld gelijk. Free roam zelf niet opnieuw gereden:
         de route erheen hangt af van laadtijden (Space in de Career-hub opent soms free roam,
-        soms de wereldkaart met een race).*
+        soms de wereldkaart met een race).
+      - Free roam (Career-hub → FREE ROAM, rondrijden door Historic Chinatown en een tunnel):
+        120 fps vast (minimum 117), beeld goed. Opstartvideo's weer goed na het terugdraaien van
+        de codegen-opties.*
 
 ### Bewust niet
 
