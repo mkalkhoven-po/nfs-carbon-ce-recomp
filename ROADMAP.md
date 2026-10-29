@@ -104,7 +104,24 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       - Stabiliteit: 4 van ~15 runs op 240/1000 Hz eindigden in de race of bij het laden
         ervan met NVIDIA Xid 13 "SKEDCHECK36_DEPENDENCE_COUNTER_UNDERFLOW" (device lost,
         exit 0xC0000409); 3 runs op 120 Hz en eerdere dagen op 30/60 nooit. Validatielagen:
-        geen fouten. Oorzaak nog onbekend.*
+        geen fouten. Oorzaak nog onbekend.
+      Vervolg 29-10:
+      - Let op: de metingen van 28/29-10 hierboven zijn met een release-build zonder
+        optimalisatie gedaan (een mislukte configure had `CMAKE_CXX_FLAGS_RELEASE` leeggemaakt;
+        de game-code draaide op `-O0`). Hersteld; nu weer `-O3`.
+      - `clear_memory_page_state=false` en barriers zonder fragment-stage: geen effect.
+      - SDK-patch 0006 "upload hoisting": uploads tijdens een render pass worden verzameld in
+        een slot dat vóór die render pass is opgenomen (één barrier + copies + barrier), tenzij
+        een draw in de pass de pagina's al las (bitset per pagina; dan de oude route). In de
+        race ~95% van de ~90.000 uploads/s verplaatst; GPU 93% → ~50%.
+      - Resultaat (`-O3`, Quick Race, wisselend per race door de AI): 120 Hz gemiddeld 78–90,
+        minimum ~65–71 (zonder 0006: 72, minimum 53); 240 Hz gemiddeld 95–101, minimum 62–70;
+        menu op 240 ~140. Nu CPU-gebonden: de twee game-threads (render en een tweede) zitten op
+        ~98%, de GPU-thread op ~57%; ~10–15k schrijffouten/s op beschermde pagina's.
+      - Stabiliteit: 5 runs (2× 120, 3× 240) zonder Xid 13.
+      - Verder sneller kan alleen aan de CPU-kant: codegen-opties (`ctr/xer/cr_as_local` enz.,
+        eerder ruisig omdat de GPU de rem was), of minder schrijffouten (pagina's die elk frame
+        opnieuw beschreven worden niet meer beschermen maar op inhoud vergelijken).*
 
 ### Bewust niet
 

@@ -55,6 +55,12 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+- `0006-vulkan-hoist-shared-memory-uploads.patch` (Vulkan command processor, deferred command
+  buffer, shared memory): de game schrijft vertexdata vlak voor elke draw; de backend uploadde die
+  per draw en brak daarvoor elke keer de render pass af (~1000 keer per raceframe). Nu gaan
+  uploads tijdens een render pass naar een plek vóór die render pass, zolang geen draw in die
+  pass de pagina's al gelezen heeft (anders de oude route). ~95% van de uploads gaat zo; GPU in
+  de race van ~93% naar ~50%. Uit te zetten met `vulkan_hoist_shared_memory_uploads=false`.
 - `0005-present-aspect-override.patch` (`xboxkrnl_video`): `SetPresentAspectOverride()`
   laat de app hetzelfde doen voor ander 16:9-materiaal (Carbon: de laadschermen).
 - `0004-present-movie-aspect-setting.patch` (`xfile`, `xboxkrnl_video`, command processors):
@@ -110,10 +116,11 @@ met bewegingseffecten is nog niet vergeleken. Wie toch het nauwkeurige pad wil i
 ### Hogere framerate
 
 `--guest_vblank_rate=120` (of 240) verhoogt de cap; de simulatie rekent met de klok, dus
-race-klok en physics blijven realtime. Op een RTX 5080 haalt het menu ~120 fps, een race
-gemiddeld ~70–90 (minimum ~45): de grens is de Vulkan-emulatie, niet de cap. `--log_fps=true`
-logt elke seconde de fps en het traagste frame. Bij 240 en hoger is een paar keer een
-GPU-fout opgetreden in de race (NVIDIA Xid 13, zie ROADMAP); 120 bleef stabiel.
+race-klok en physics blijven realtime. Op een RTX 5080 haalt het menu ~120 fps (op 240: ~140),
+een race gemiddeld ~80–90 op 120 en ~95–100 op 240 (minimum ~62–70), bij ~50–60% GPU: de grens
+is nu de CPU-kant (de game-threads zelf). `--log_fps=true` logt elke seconde de fps en het
+traagste frame. Eerder is op 240 en hoger een paar keer een GPU-fout opgetreden in de race
+(NVIDIA Xid 13, zie ROADMAP); sinds SDK-patch 0006 niet meer gezien (3 runs op 240).
 
 ### Ultrawide
 
