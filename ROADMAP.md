@@ -151,7 +151,11 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         120 fps vast (minimum 117), beeld goed. Opstartvideo's weer goed na het terugdraaien van
         de codegen-opties.
       - Remix-profiel nu op 120 fps (was 60): races gemiddeld 105–111 (minimum 62–82) bij
-        ~45–50% GPU; met 21:9 gemiddeld 117 (minimum 78); video's goed.*
+        ~45–50% GPU; met 21:9 gemiddeld 117 (minimum 78); video's goed.
+      - Upstream (29-10): 0006 bestond al als open PR rexglue/rexglue-sdk#536 (zelfde ontwerp,
+        voor MoltenVK); daar onze NVIDIA-cijfers als reactie gezet. Hot pages (0007) aangeboden:
+        issue #548, PR #549 (los gemeten met SDK-standaard: menu 163 → 190, race 87 → 147).
+        Fix #535 overgenomen als patch 0008.*
 
 ### Bewust niet
 
