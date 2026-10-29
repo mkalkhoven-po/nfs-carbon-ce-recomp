@@ -15,8 +15,13 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 - [x] **1. Vulkan + trouwe basis**: Vulkan-backend in de SDK aan en standaard, EDRAM via
       interlock, vergelijken met D3D12, profiel "Origineel" vastleggen.
-      *Klaar (24-10). Vulkan- en D3D12-beeld identiek op het oog. Nog te doen: vergelijken
-      met referentiebeelden van een echte 360 of Xenia.*
+      *Klaar (24-10). Vulkan- en D3D12-beeld identiek op het oog. Vergeleken (29-10) met
+      360-opnames (YouTube, "NEED FOR SPEED: CARBON | Xbox 360 Gameplay" van BenedictPlays,
+      1080p): Career-races met de RX-8, cutscenes, race-intro. Zelfde belichting, bloom,
+      motion blur, lakkleur en HUD-layout. De opname is ~10% helderder en het HUD-cyaan is er
+      lichter (R 130 i.p.v. 76): kleurverschuiving van opname/YouTube, want de HUD-kleuren
+      zijn vast. Geen reden om iets aan te passen; exacte vergelijking kan alleen met eigen
+      opnames van dezelfde scène.*
 - [x] **2. Remix (bestaande opties)**: resolutieschaal 2×/3×, anisotroop 16×, FSR/CAS,
       vsync; gebundeld in profiel "Remix".
       *Klaar (25-10): Remix = 2×, 16× AF, `fbo`, CAS (`present_effect = cas`, milde standaard-
