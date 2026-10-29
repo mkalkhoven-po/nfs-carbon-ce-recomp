@@ -55,6 +55,10 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+- `0008-vulkan-no-draw-in-transfer-pass-upstream-pr535.patch`: overgenomen uit upstream-PR
+  rexglue/rexglue-sdk#535. Met dynamic rendering kon een draw doorlopen in een
+  ownership-transfer-pass naar hetzelfde render target (ongeldige Vulkan); dat gebeurt vaker
+  nu uploads de render pass niet meer afbreken (0006). Raakt Remix (`fbo`).
 - `0007-shared-memory-hot-pages.patch` (`shared_memory`, Vulkan): pagina's die de game elk frame
   opnieuw schrijft (3 frames op rij geüpload) worden niet meer tegen schrijven beschermd, maar
   bij elke aanvraag vergeleken met een schaduwkopie van de laatste upload; alleen gewijzigde

@@ -165,7 +165,8 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       (`sub_82313658`), de taal-lookup (`sub_8231F7B8`, eigen label "EXIT TO DESKTOP") en
       option React (`sub_8230EE18`, ID 10 sluit de game via dezelfde route als Alt+F4).
       Herkend aan het eigen label: ID 10 is in het pauzemenu PHOTO MODE (die sloot eerst de
-      game af, gevonden en opgelost 29-10). Mogelijke uitbreiding: de optie in het pauzemenu.
+      game af, gevonden en opgelost 29-10). In het pauzemenu niet nodig: daar staat al "terug
+      naar het hoofdmenu".
 
 ## Onderzocht
 
