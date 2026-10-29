@@ -9,7 +9,7 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   (fragment shader interlock), originele gamma, geen extra post-processing.
   Doel: niet te onderscheiden van een echte 360.
 - **Remix**: hogere interne resolutie, anisotrope filtering, FSR/CAS bij presentatie,
-  vsync naar keuze, later hogere fps en widescreen/ultrawide. Alles los instelbaar.
+  120 fps, widescreen/ultrawide naar keuze. Alles los instelbaar.
 
 ## Fases
 
@@ -149,7 +149,9 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         soms de wereldkaart met een race).
       - Free roam (Career-hub → FREE ROAM, rondrijden door Historic Chinatown en een tunnel):
         120 fps vast (minimum 117), beeld goed. Opstartvideo's weer goed na het terugdraaien van
-        de codegen-opties.*
+        de codegen-opties.
+      - Remix-profiel nu op 120 fps (was 60): races gemiddeld 105–111 (minimum 62–82) bij
+        ~45–50% GPU; met 21:9 gemiddeld 117 (minimum 78); video's goed.*
 
 ### Bewust niet
 

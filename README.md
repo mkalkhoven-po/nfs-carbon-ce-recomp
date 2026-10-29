@@ -113,10 +113,11 @@ gaan altijd voor op het profiel.
 | Anisotrope filtering (`anisotropic_override`) | -1 (wat de game vraagt) | 5 (16×) |
 | Native 2× MSAA | aan | aan |
 | Presentatie (`present_effect`) | `bilinear` | `cas` (AMD CAS-verscherping) |
-| Framerate (`guest_vblank_rate`) | 30 fps (zoals de 360) | 60 fps |
+| Framerate (`guest_vblank_rate`) | 30 fps (zoals de 360) | 120 fps |
 
-GPU-belasting (RTX 5080): Origineel ~23% in het menu (30 fps). Remix ~33% in het menu en
-~68% in een race (60 fps); met `fsi` zou Remix in races op 94–97% zitten. In zij-aan-zij
+GPU-belasting (RTX 5080): Origineel ~23% in het menu (30 fps). Remix haalt in races op 120
+gemiddeld ~105–110 fps (minimum ~60–80) bij ~45–50% GPU, het menu 120 (gemeten met
+SDK-patches 0006 en 0007; daarvoor ~68% GPU op 60 fps). In zij-aan-zij
 vergelijkingen (menu, race-start) was `fbo` niet van `fsi` te onderscheiden; hoge snelheid
 met bewegingseffecten is nog niet vergeleken. Wie toch het nauwkeurige pad wil in Remix:
 `render_target_path_vulkan = "fsi"`. Voor een 4K-scherm kan `draw_resolution_scale_x/y = 3`.
@@ -137,7 +138,7 @@ verhouding renderen: 3D-beeld (meer zicht opzij, niet uitgerekt) en HUD aan de r
 Video's en laadschermen blijven 16:9 (op een breed scherm met zwarte balken). Op een 16:9-scherm zie je het
 beeld in letterbox. Rendert op 720 × B/H breed (21:9 = 1680, 32:9 = 2560, maximum); de
 hoofdscène gaat dan van 4× naar 2× MSAA om in de EDRAM te passen. Smaller dan 16:9 kan niet.
-Remix (2×) met 21:9 haalt 60 fps in races bij ~80% GPU (RTX 5080).
+Remix (2×) met 21:9 haalt in races op 120 gemiddeld ~117 fps (minimum ~78), RTX 5080.
 
 Vulkan-presentatiemodus *immediate* geeft op NVIDIA een zwart beeld; de profielen zetten
 `vulkan_allow_present_mode_immediate = false` (mailbox/FIFO werken). Smart App Control moet uit staan,
