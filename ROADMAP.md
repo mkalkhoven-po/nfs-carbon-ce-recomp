@@ -139,7 +139,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         208,5 (beide, +19%). Races met gas: 120 Hz gemiddeld ~117 (minimum 81–93), 240 Hz
         124–128 (minimum 86–97), menu op 240 ~174; GPU ~50%. Beeld gecontroleerd (Origineel
         en Remix: menu's, kaart, intro, race); witte flits aan het eind van de race-intro zit
-        ook zonder hot pages. 4 runs op 120/240 zonder Xid 13.*
+        ook zonder hot pages. 4 runs op 120/240 zonder Xid 13.
+      - Career (savegame, 120 Hz): dezelfde Career-race (Main Street, RX-8, met crash) werd met
+        en zonder hot pages vrijwel frame voor frame gelijk afgespeeld: zonder 82,3 fps gemiddeld
+        (minimum 57), met 97,7 (minimum 67), beeld gelijk. Free roam zelf niet opnieuw gereden:
+        de route erheen hangt af van laadtijden (Space in de Career-hub opent soms free roam,
+        soms de wereldkaart met een race).*
 
 ### Bewust niet
 
