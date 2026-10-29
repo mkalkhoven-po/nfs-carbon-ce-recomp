@@ -59,8 +59,10 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   (menu en race-start, zelfde toetsenreeks): auto, vloer en gebouwen gemiddeld < 1/255
   verschil; resterende verschillen kwamen door animatie en willekeurige tegenstanders. Geen
   banding in glow/neon. Remix-menu nu ~33% GPU i.p.v. ~53%.
-- Open: `fsi` vs `fbo` bij hoge snelheid (bewegingsonscherpte), canyon en regen vergelijken;
-  de interlock-shaders zelf optimaliseren (alleen nog relevant voor Origineel).
+- `fsi` vs `fbo` bij hoge snelheid (29-10): Quick Race-canyon (Knife's Edge) met vol gas, zelfde
+  momenten (80–105 mph, bewegingsonscherpte, vonken): op het oog gelijk, gemiddeld 3/255 verschil
+  (vooral tegenstander en vonken). Regen is in Quick Race niet te kiezen (geen weeroptie).
+- Open: de interlock-shaders zelf optimaliseren (alleen nog relevant voor Origineel).
 
 ### Stretch goals
 
@@ -84,7 +86,10 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       autokeuze, crew, race-HUD met binnenspiegel, pauzemenu, Options, Statistics, Career-menu,
       aliasinvoer, autosave-dialogen, besturingsscherm, proloog, safehouse, wereldkaart,
       Customization (Performance, winkelwagen), free roam met SMS, pauzemenu en Photo Mode,
-      laadschermen. Nog niet bekeken: uitslagscherm na een gewonnen race, splitscreen.*
+      laadschermen, canyon-race met eindscherm, Standings en Player Stats (na een verloren
+      race, 29-10; een gewonnen race haalt de testroute zonder sturen niet). Splitscreen
+      (Quick Race, Game Mode "Split Screen") vraagt om START op een tweede controller; niet
+      getest.*
 - [x] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Klaar (29-10): niet nodig, de simulatie rekent al met de klok. Origineel haalt op 120 Hz
       in races gemiddeld ~117 fps, Remix (nu standaard 120) 105–111; free roam vast 120. Open:
@@ -193,4 +198,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 - Career: met een savegame getest tot de eerste Career-race (Main Street, RX-8), de Career-hub,
   wereldkaart, safehouse en free roam. Verder in de verhaallijn (gebieden veroveren, crew,
-  canyon-duels) nog niet. Savegames werken (alias en autosave in `Documents\nfsc`).
+  canyon-duels) nog niet: daarvoor moeten races gewonnen worden, wat de testroutes (toetsen
+  zonder sturen) niet kunnen. Savegames werken (alias en autosave in `Documents\nfsc`).
+- Witte (soms donkere) vlekjes op de vervaagde achtergrond van het eindscherm na een race
+  (29-10), langs objectranden (rotsen, takken). Ook met D3D12, met `fbo` en met de
+  SDK-standaard (geen hoisting/hot pages, `clear_memory_page_state=true`), dus niet door
+  onze patches. Wit of donker verschilt per run: waarschijnlijk leest de blur-pass oude of
+  niet-geschreven data. `depth_float24_round` en `depth_float24_convert_in_pixel_shader`
+  helpen niet; `readback_resolve=full` leek minder te geven (één run). Vergelijken met
+  360-beeld van een eindscherm.
