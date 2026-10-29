@@ -82,9 +82,29 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 - [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
       *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps
-      (prestatie is de grens) met realtime race-klok. Volledig ongeremd (`vsync=false`,
-      1000 vblanks/s) hangt het spel bij het laden van een race. Te doen: race-prestaties
-      profileren, physics bij hoge fps controleren (o.a. botsingen), hang onderzoeken.*
+      (prestatie is de grens) met realtime race-klok.
+      Onderzoek 29-10 (`log_fps` toegevoegd, RTX 5080, 240 Hz-scherm):
+      - Op 240 Hz loopt de race-klok exact realtime (12 s per 12 s). Menu ~122 fps: een frame
+        van ~7 ms mist een vblank en wacht op de volgende (kwantisatie). Op 1000 Hz menu ~140.
+      - Plafond onafhankelijk van cap, resolutie (1×/2×) en `fsi`/`fbo`: menu ~140, race
+        60–110 (120 Hz-cap: gemiddeld 69–77, minimum ~45). Occlusion queries uit: geen effect.
+      - GPU staat op 96% maar trekt ~100 W van 360 W; GPU-timestamps: in de race is de GPU
+        de hele seconde bezig met onze command buffers (idle ~3 ms/s). Geen rekenwerk dus,
+        maar serialisatie.
+      - Oorzaak: de game schrijft vertexdata vlak voor elke draw; de SDK uploadt die pagina's
+        per draw naar het shared-memory-buffer (~90.000 uploads/s, ~650 per menuframe, 1000
+        per raceframe), en elke upload breekt de render pass en zet 2 barriers. Per frame
+        ~585 render passes van 7–13 µs = ~70% van de GPU-tijd; copies en barriers samen ~25%.
+      - Proef "upload-ahead" (bij een upload ook volgende ongeldige pagina's meenemen,
+        256 pagina's): render passes en barriers gehalveerd, GPU-tijd per frame −16%, maar
+        6× zoveel pagina's geüpload (de CPU schrijft ze nog) en meer paginafouten: netto geen
+        winst. Beter idee: alleen pagina's meenemen die sinds de laatst gelezen ring-write
+        pointer niet meer zijn beschreven (schrijf-volgnummer per pagina), of vooruitkijken
+        in de PM4-ring naar de bereiken van komende draws. Diepe SDK-wijziging.
+      - Stabiliteit: 4 van ~15 runs op 240/1000 Hz eindigden in de race of bij het laden
+        ervan met NVIDIA Xid 13 "SKEDCHECK36_DEPENDENCE_COUNTER_UNDERFLOW" (device lost,
+        exit 0xC0000409); 3 runs op 120 Hz en eerdere dagen op 30/60 nooit. Validatielagen:
+        geen fouten. Oorzaak nog onbekend.*
 
 ### Bewust niet
 

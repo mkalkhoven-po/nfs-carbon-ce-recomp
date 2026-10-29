@@ -14,6 +14,7 @@ include(generated/rexglue.cmake)
 set(NFSC_SOURCES
     src/main.cpp
     src/exit_option.cpp
+    src/framerate.cpp
     src/profiles.cpp
     src/widescreen.cpp
 )

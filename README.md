@@ -107,6 +107,14 @@ vergelijkingen (menu, race-start) was `fbo` niet van `fsi` te onderscheiden; hog
 met bewegingseffecten is nog niet vergeleken. Wie toch het nauwkeurige pad wil in Remix:
 `render_target_path_vulkan = "fsi"`. Voor een 4K-scherm kan `draw_resolution_scale_x/y = 3`.
 
+### Hogere framerate
+
+`--guest_vblank_rate=120` (of 240) verhoogt de cap; de simulatie rekent met de klok, dus
+race-klok en physics blijven realtime. Op een RTX 5080 haalt het menu ~120 fps, een race
+gemiddeld ~70–90 (minimum ~45): de grens is de Vulkan-emulatie, niet de cap. `--log_fps=true`
+logt elke seconde de fps en het traagste frame. Bij 240 en hoger is een paar keer een
+GPU-fout opgetreden in de race (NVIDIA Xid 13, zie ROADMAP); 120 bleef stabiel.
+
 ### Ultrawide
 
 `--aspect_ratio=21:9` (of `32:9`, of een eigen `B:H`; standaard `16:9`) laat de game in die

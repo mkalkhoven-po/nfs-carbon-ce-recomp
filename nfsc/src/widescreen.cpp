@@ -177,22 +177,20 @@ bool LoadingScreenActive(uint8_t* base) {
 
 }  // namespace
 
-// sub_826E3860 presents a frame (it calls VdSwap).
-REX_EXTERN(__imp__sub_826E3860);
-REX_HOOK_RAW(sub_826E3860) {
-  if (REXCVAR_GET(render_width) > 1280) {
-    static bool loading = false;
-    const bool now = LoadingScreenActive(base);
-    if (now != loading) {
-      loading = now;
-      rex::kernel::xboxkrnl::SetPresentAspectOverride(now);
-      REXLOG_INFO("nfsc: loading screen {}", now ? "shown, presenting at 16:9" : "hidden");
-    }
-  }
-  __imp__sub_826E3860(ctx, base);
-}
-
 namespace nfsc {
+
+void UpdatePresentAspect(uint8_t* base) {
+  if (REXCVAR_GET(render_width) <= 1280) {
+    return;
+  }
+  static bool loading = false;
+  const bool now = LoadingScreenActive(base);
+  if (now != loading) {
+    loading = now;
+    rex::kernel::xboxkrnl::SetPresentAspectOverride(now);
+    REXLOG_INFO("nfsc: loading screen {}", now ? "shown, presenting at 16:9" : "hidden");
+  }
+}
 
 void ApplyWidescreen() {
   unsigned aspect_x = 16, aspect_y = 9;
