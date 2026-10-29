@@ -127,10 +127,19 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         ~57% in de GPU-wachtlus `sub_826E0088`, GPU-thread (command processor) ~80% bezig:
         ~15% `NtProtectVirtualMemory` (pagina's beschermen na elke upload, ~90.000/s), ~15%
         driver, de rest PM4-verwerking verspreid. De command processor is nu de rem.
-      - Volgende stap als het sneller moet: pagina's die elk frame opnieuw beschreven worden
-        ("hot") niet meer beschermen maar bij elke aanvraag op inhoud vergelijken met een
-        schaduwkopie; scheelt VirtualProtect-calls en schrijffouten. Raakt de watches van de
-        texture cache en GPU-geschreven pagina's, dus diepe SDK-wijziging.*
+      - SDK-patch 0007 "hot pages": pagina's die 3 frames op rij geüpload worden, worden niet
+        meer beschermd maar bij elke aanvraag vergeleken met een schaduwkopie (~2000–6500
+        pagina's hot; van ~1 miljoen aangevraagde ongeldige pagina's/s worden er ~70–110k echt
+        geüpload). Nooit hot: pagina's met een watch (texture cache; een nieuwe watch maakt
+        ze weer normaal en beschermd) en GPU-geschreven pagina's; wijzigingen gaan wel naar de
+        global watches (scaled resolve). Na 120 frames ongewijzigd weer normaal.
+      - `clear_memory_page_state=false` (SDK-standaard true, workaround voor andere games: alle
+        CPU-pagina's elk frame ongeldig) nu in beide profielen.
+      - Benchmark (menu-mediaan, 1000 Hz): 174,7 → 180,7 (clear uit) → 194,7 (hot pages) →
+        208,5 (beide, +19%). Races met gas: 120 Hz gemiddeld ~117 (minimum 81–93), 240 Hz
+        124–128 (minimum 86–97), menu op 240 ~174; GPU ~50%. Beeld gecontroleerd (Origineel
+        en Remix: menu's, kaart, intro, race); witte flits aan het eind van de race-intro zit
+        ook zonder hot pages. 4 runs op 120/240 zonder Xid 13.*
 
 ### Bewust niet
 

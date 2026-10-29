@@ -55,6 +55,14 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+- `0007-shared-memory-hot-pages.patch` (`shared_memory`, Vulkan): pagina's die de game elk frame
+  opnieuw schrijft (3 frames op rij geüpload) worden niet meer tegen schrijven beschermd, maar
+  bij elke aanvraag vergeleken met een schaduwkopie van de laatste upload; alleen gewijzigde
+  pagina's gaan opnieuw naar de GPU. Scheelt een `VirtualProtect` per upload en een
+  access violation per CPU-schrijfactie. Bewaakte (texture cache) en door de GPU beschreven
+  pagina's worden nooit hot; na 120 frames zonder wijziging weer normaal. Menu +8%, samen met
+  `clear_memory_page_state=false` (nu in beide profielen) +19%. Uit met
+  `shared_memory_hot_pages=false`.
 - `0006-vulkan-hoist-shared-memory-uploads.patch` (Vulkan command processor, deferred command
   buffer, shared memory): de game schrijft vertexdata vlak voor elke draw; de backend uploadde die
   per draw en brak daarvoor elke keer de render pass af (~1000 keer per raceframe). Nu gaan
@@ -116,11 +124,11 @@ met bewegingseffecten is nog niet vergeleken. Wie toch het nauwkeurige pad wil i
 ### Hogere framerate
 
 `--guest_vblank_rate=120` (of 240) verhoogt de cap; de simulatie rekent met de klok, dus
-race-klok en physics blijven realtime. Op een RTX 5080 haalt het menu ~120 fps (op 240: ~140),
-een race gemiddeld ~80–90 op 120 en ~95–100 op 240 (minimum ~62–70), bij ~50–60% GPU: de grens
-is nu de CPU-kant (de game-threads zelf). `--log_fps=true` logt elke seconde de fps en het
-traagste frame. Eerder is op 240 en hoger een paar keer een GPU-fout opgetreden in de race
-(NVIDIA Xid 13, zie ROADMAP); sinds SDK-patch 0006 niet meer gezien (3 runs op 240).
+race-klok en physics blijven realtime. Op een RTX 5080 haalt een race op 120 gemiddeld ~117
+fps (minimum ~80–90), op 240 ~125 (menu ~175), bij ~50% GPU; de grens is de emulatie van de
+GPU-commando's op de CPU. `--log_fps=true` logt elke seconde de fps en het traagste frame.
+Eerder is op 240 en hoger een paar keer een GPU-fout opgetreden in de race (NVIDIA Xid 13, zie
+ROADMAP); sinds SDK-patch 0006 niet meer gezien (5 runs op 240, ~17 op 1000).
 
 ### Ultrawide
 

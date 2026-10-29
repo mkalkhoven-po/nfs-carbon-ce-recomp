@@ -53,6 +53,10 @@ constexpr std::array kProfileValues = {
     // so the vblank rate is the frame cap: 30 fps like the Xbox 360 (which never
     // reached 60), or 60 fps. Race timers run in real time at 30, 60 and 120.
     ProfileValue{"guest_vblank_rate", "30", "60"},
+    // The SDK forgets every CPU-uploaded page at the end of each frame by
+    // default (a workaround for other games), so all vertex data used in a frame
+    // is uploaded again in the next. Carbon doesn't need it; off is ~3% faster.
+    ProfileValue{"clear_memory_page_state", "false", "false"},
     // Immediate presentation shows only black on NVIDIA (RTX 5080, layered DXGI
     // present); mailbox and FIFO work.
     ProfileValue{"vulkan_allow_present_mode_immediate", "false", "false"},
