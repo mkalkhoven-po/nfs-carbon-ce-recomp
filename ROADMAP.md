@@ -85,8 +85,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       aliasinvoer, autosave-dialogen, besturingsscherm, proloog, safehouse, wereldkaart,
       Customization (Performance, winkelwagen), free roam met SMS, pauzemenu en Photo Mode,
       laadschermen. Nog niet bekeken: uitslagscherm na een gewonnen race, splitscreen.*
-- [ ] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
-      *Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
+- [x] **5. 120/240 fps**: simulatie losmaken van de framerate (vaste tick + interpolatie).
+      *Klaar (29-10): niet nodig, de simulatie rekent al met de klok. Origineel haalt op 120 Hz
+      in races gemiddeld ~117 fps, Remix (nu standaard 120) 105–111; free roam vast 120. Open:
+      de oorzaak van de Xid 13-crashes van vóór patch 0006–0008 is nooit gevonden (sindsdien
+      niet meer gezien). Details hieronder.
+      Verkenning (24-10): de simulatie is al tijdgebaseerd, dus interpolatie is
       waarschijnlijk niet nodig. `guest_vblank_rate=120` werkt: menu 120 fps, race 60–88 fps
       (prestatie is de grens) met realtime race-klok.
       Onderzoek 29-10 (`log_fps` toegevoegd, RTX 5080, 240 Hz-scherm):
@@ -187,5 +191,6 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 ## Open problemen
 
-- Career voorbij de proloog nog niet getest. Savegames werken (alias en autosave in
-  `Documents\nfsc`).
+- Career: met een savegame getest tot de eerste Career-race (Main Street, RX-8), de Career-hub,
+  wereldkaart, safehouse en free roam. Verder in de verhaallijn (gebieden veroveren, crew,
+  canyon-duels) nog niet. Savegames werken (alias en autosave in `Documents\nfsc`).
