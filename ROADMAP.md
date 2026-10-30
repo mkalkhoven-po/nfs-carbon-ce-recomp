@@ -171,7 +171,17 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
         issue #548, PR #549 (los gemeten met SDK-standaard: menu 163 → 190, race 87 → 147).
         Fix #535 overgenomen als patch 0008. Op 30-10 ook 0001 (GapFill na `bctr`, issue #552,
         PR #554: op `development` 72.088 → 72.847 functies, `sub_824DA838` ontbrak) en 0002
-        (`guest_vblank_rate`, #553 / #555) aangeboden.*
+        (`guest_vblank_rate`, #553 / #555) aangeboden.
+      - Review (30-10, review-agent) van #549/#554/#555, verwerkt als tweede commit per PR en in
+        de lokale patches: hot pages die niet meer worden opgevraagd gaan na 120 frames terug
+        (bleven eerst voor altijd hot en vulden de limiet), limiet in bytes (64 MB), beveiligen
+        per reeks pagina's, `shared_memory_hot_pages` standaard uit (alleen op Windows/Vulkan
+        getest; ons profiel zet het aan); `guest_vblank_rate` begrensd op 1–1000 (commandoregel
+        en NaN omzeilden de range) en geen vblank-salvo bij wisselen; GapFill ontdekt ook de
+        aanroepdoelen van gap-functies en probeert elke functie één keer (NFSC-code
+        byte-identiek). Getest: canyon-race Remix op 120 Hz met hot pages 117–120 fps, zonder
+        97–119; `--guest_vblank_rate=100000` geeft ~200 fps in het menu zonder vastlopen.
+        Mergen kan alleen een rexglue-maintainer.*
 
 ### Bewust niet
 

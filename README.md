@@ -57,7 +57,9 @@ Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd u
 
 Upstream aangeboden (rexglue/rexglue-sdk, tegen `development`): 0001 als issue #552 / PR #554,
 0002 als #553 / #555, 0007 als #548 / #549. 0006 is hetzelfde als open PR #536, 0008 komt uit
-#535. 0003–0005 zijn alleen voor dit project.
+#535. 0003–0005 zijn alleen voor dit project. Op 30-10 heeft een review-agent de drie
+PR's nagelopen; de terechte punten staan als tweede commit in elke PR en zitten ook in de
+lokale patches (0001, 0002 en 0007 zijn de upstream-versies, met clang-format).
 
 - `0008-vulkan-no-draw-in-transfer-pass-upstream-pr535.patch`: overgenomen uit upstream-PR
   rexglue/rexglue-sdk#535. Met dynamic rendering kon een draw doorlopen in een
@@ -68,9 +70,9 @@ Upstream aangeboden (rexglue/rexglue-sdk, tegen `development`): 0001 als issue #
   bij elke aanvraag vergeleken met een schaduwkopie van de laatste upload; alleen gewijzigde
   pagina's gaan opnieuw naar de GPU. Scheelt een `VirtualProtect` per upload en een
   access violation per CPU-schrijfactie. Bewaakte (texture cache) en door de GPU beschreven
-  pagina's worden nooit hot; na 120 frames zonder wijziging weer normaal. Menu +8%, samen met
-  `clear_memory_page_state=false` (nu in beide profielen) +19%. Uit met
-  `shared_memory_hot_pages=false`.
+  pagina's worden nooit hot; na 120 frames zonder wijziging of zonder aanvraag weer normaal
+  (maximaal 64 MB schaduwkopieën). Menu +8%, samen met `clear_memory_page_state=false` +19%.
+  Standaard uit (`shared_memory_hot_pages`); beide profielen zetten het aan.
 - `0006-vulkan-hoist-shared-memory-uploads.patch` (Vulkan command processor, deferred command
   buffer, shared memory): de game schrijft vertexdata vlak voor elke draw; de backend uploadde die
   per draw en brak daarvoor elke keer de render pass af (~1000 keer per raceframe). Nu gaan
@@ -85,8 +87,8 @@ Upstream aangeboden (rexglue/rexglue-sdk, tegen `development`): 0001 als issue #
 - `0003-kernel-log-swap-rate-setting.patch` (`src/kernel/xboxkrnl/xboxkrnl_video.cpp`):
   cvar `log_swap_rate=N` logt elke N seconden de framerate (swaps/s). Handig voor metingen.
 - `0002-graphics-guest-vblank-rate-setting.patch` (`src/graphics/graphics_system.cpp`):
-  nieuwe cvar `guest_vblank_rate` (Hz, 0 = refresh rate van de video mode). Carbon
-  presenteert op elke vblank en rekent met de klok, dus dit is de frame-cap.
+  nieuwe cvar `guest_vblank_rate` (Hz, 0 = refresh rate van de video mode, begrensd op
+  1–1000). Carbon presenteert op elke vblank en rekent met de klok, dus dit is de frame-cap.
 - `0001-gapfill-claim-code-after-bctr-tail-calls.patch` (`src/codegen/phase_gapfill.cpp`): GapFill miste code direct na functies die eindigen
   op een indirecte tail call (`bctr`, veel gebruikt voor virtuele calls); de eerste
   crash (call naar `0x824DA838`) kwam daardoor. Aanpassingen:
@@ -95,7 +97,9 @@ Upstream aangeboden (rexglue/rexglue-sdk, tegen `development`): 0001 als issue #
   - GapFill herhalen tot er niets nieuws bijkomt (convergeert na ~21 rondes);
   - in latere rondes alleen nieuwe gap-functies (en wat ze overlappen) opschonen,
     zodat dit snel blijft (~85 s codegen);
-  - ongebruikte slots in de import-thunktabel overslaan.
+  - ongebruikte slots in de import-thunktabel overslaan;
+  - aanroepdoelen die gap-functies vinden direct ontdekken, en elke functie maar één keer
+    proberen (geen herhaalde waarschuwingen).
   Resultaat: 73.202 functies, geen onopgeloste calls of `REX_FATAL`s.
 
 ## Spelen

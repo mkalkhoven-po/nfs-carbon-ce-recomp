@@ -58,6 +58,10 @@ constexpr std::array kProfileValues = {
     // default (a workaround for other games), so all vertex data used in a frame
     // is uploaded again in the next. Carbon doesn't need it; off is ~3% faster.
     ProfileValue{"clear_memory_page_state", "false", "false"},
+    // Vertex data the game rewrites every frame is compared with the last upload
+    // instead of write-protected (SDK patch 0007, off by default): menus ~8%,
+    // races ~19% faster.
+    ProfileValue{"shared_memory_hot_pages", "true", "true"},
     // Immediate presentation shows only black on NVIDIA (RTX 5080, layered DXGI
     // present); mailbox and FIFO work.
     ProfileValue{"vulkan_allow_present_mode_immediate", "false", "false"},
