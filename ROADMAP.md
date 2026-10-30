@@ -200,6 +200,14 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 
 ## Onderzocht
 
+- **"Vlekjes" op het eindscherm** (29-10, opgelost 30-10): geen renderfout maar een fout in onze
+  screenshots. GDI+ (`Graphics.CopyFromScreen`) gebruikt intern de kleur 0x0D0B0C als markering
+  en maakt pixels met precies die kleur zwart (in een 32-bit ARGB-bitmap ook transparant, in een
+  viewer met witte achtergrond dus witte vlekken). Het donkere eindscherm heeft veel pixels van
+  ongeveer die kleur, vandaar de randjes. Bewezen met een kale GDI-`BitBlt` op hetzelfde moment:
+  daar staat gewoon RGB (13,11,12). Onderweg nagelopen met een tijdelijke draw-log en
+  resolve-dumps: de frontbuffer van de game en de swap-textuur zijn schoon. Screenshots voortaan
+  met kale GDI (`BitBlt` in een DIB).
 - **"Texture fetch constant has invalid type"** (~500 waarschuwingen per race-intro, 25-10):
   de game samplet tijdens de intro-cutscene een texture-slot zonder texture (type invalid,
   basisadres 0, afmeting 0). Xenia's standaard (slot negeren) geeft geen zichtbare fout;
@@ -212,10 +220,3 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   wereldkaart, safehouse en free roam. Verder in de verhaallijn (gebieden veroveren, crew,
   canyon-duels) nog niet: daarvoor moeten races gewonnen worden, wat de testroutes (toetsen
   zonder sturen) niet kunnen. Savegames werken (alias en autosave in `Documents\nfsc`).
-- Witte (soms donkere) vlekjes op de vervaagde achtergrond van het eindscherm na een race
-  (29-10), langs objectranden (rotsen, takken). Ook met D3D12, met `fbo` en met de
-  SDK-standaard (geen hoisting/hot pages, `clear_memory_page_state=true`), dus niet door
-  onze patches. Wit of donker verschilt per run: waarschijnlijk leest de blur-pass oude of
-  niet-geschreven data. `depth_float24_round` en `depth_float24_convert_in_pixel_shader`
-  helpen niet; `readback_resolve=full` leek minder te geven (één run). Vergelijken met
-  360-beeld van een eindscherm.
