@@ -169,7 +169,9 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       - Upstream (29-10): 0006 bestond al als open PR rexglue/rexglue-sdk#536 (zelfde ontwerp,
         voor MoltenVK); daar onze NVIDIA-cijfers als reactie gezet. Hot pages (0007) aangeboden:
         issue #548, PR #549 (los gemeten met SDK-standaard: menu 163 → 190, race 87 → 147).
-        Fix #535 overgenomen als patch 0008.*
+        Fix #535 overgenomen als patch 0008. Op 30-10 ook 0001 (GapFill na `bctr`, issue #552,
+        PR #554: op `development` 72.088 → 72.847 functies, `sub_824DA838` ontbrak) en 0002
+        (`guest_vblank_rate`, #553 / #555) aangeboden.*
 
 ### Bewust niet
 

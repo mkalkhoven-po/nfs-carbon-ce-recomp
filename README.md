@@ -55,6 +55,10 @@ cmake --build --preset win-amd64-debug
 
 Staan als patch in `patches/rexglue-sdk/` (de submodule wijst naar ongewijzigd upstream).
 
+Upstream aangeboden (rexglue/rexglue-sdk, tegen `development`): 0001 als issue #552 / PR #554,
+0002 als #553 / #555, 0007 als #548 / #549. 0006 is hetzelfde als open PR #536, 0008 komt uit
+#535. 0003–0005 zijn alleen voor dit project.
+
 - `0008-vulkan-no-draw-in-transfer-pass-upstream-pr535.patch`: overgenomen uit upstream-PR
   rexglue/rexglue-sdk#535. Met dynamic rendering kon een draw doorlopen in een
   ownership-transfer-pass naar hetzelfde render target (ongeldige Vulkan); dat gebeurt vaker
