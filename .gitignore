@@ -22,3 +22,6 @@ __pycache__/
 
 # --- Local performance experiments ---
 perf/
+
+# --- Release packages ---
+dist/

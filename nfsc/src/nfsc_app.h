@@ -4,13 +4,17 @@
 
 #pragma once
 
+#include <cstdlib>
+
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/system/gpu_plugin.h>
 #include <rex/ui/keybinds.h>
 
 #include "exit_option.h"
+#include "game_path.h"
 #include "profiles.h"
 #include "widescreen.h"
 
@@ -55,6 +59,29 @@ class NfscApp : public rex::ReXApp {
       bool fullscreen = rex::cvar::Query<bool>("fullscreen");
       rex::cvar::SetFlagByName("fullscreen", fullscreen ? "false" : "true");
     });
+  }
+
+  // After the SDK has set its own title (in SetupPresentation).
+  void OnPreLaunchModule() override {
+    window()->SetTitle(fmt::format(
+        "Need for Speed: Carbon Collector's Edition - Recompiled v{} ({})", NFSC_VERSION,
+        nfsc::ActiveProfile() == "remix" ? "Remix" : "Original"));
+  }
+
+  // The game data: a disc image or an extracted folder, remembered after the
+  // first start (see game_path.h).
+  void OnConfigurePaths(rex::PathConfig& paths) override {
+    nfsc::ResolveGamePath(paths, rex::filesystem::GetExecutableFolder());
+    if (paths.game_data_root.empty()) {
+      std::quick_exit(0);  // No disc image or folder chosen.
+    }
+  }
+
+  // Only the executable the game code was recompiled from runs correctly.
+  void OnPostLoadXexImage() override {
+    if (!nfsc::CheckEdition(*runtime())) {
+      std::quick_exit(1);
+    }
   }
 
   // Override virtual hooks for customization:

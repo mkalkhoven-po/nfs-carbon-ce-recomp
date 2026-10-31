@@ -198,6 +198,22 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       game af, gevonden en opgelost 29-10). In het pauzemenu niet nodig: daar staat al "terug
       naar het hoofdmenu".
 
+## Release v0.75 (31-10)
+
+- Eerste publieke testversie, zonder gamebestanden: spelers kiezen bij de eerste start hun eigen
+  ISO of uitgepakte map (onthouden in `Documents
+fscgame_path.txt`; ook `game`-map of `.iso`
+  naast de exe). SDK-patch 0009 laat de runtime een ISO direct mounten.
+- Alleen de Collector's Edition werkt (de hercompileerde code hoort bij die ene `default.xex`):
+  de exe controleert title-ID 454107EC, versie 0.0.0.7 en de eerste pagina-digest van de XEX
+  en geeft anders een duidelijke melding (`--skip_edition_check` voor wie het toch wil).
+- Engelse README, BSD-3-licentie, release-notes, `toolspackage-release.ps1` (zip met exe, DLL's,
+  licentieteksten van de SDK en third-party, snelkoppeling voor Remix). Logs alleen lokaal.
+- Getest met het pakket in een lege map en lege gebruikersmap: kiesvenster en annuleren, `game`-
+  map naast de exe (onthouden, editiecontrole, venstertitel, nieuwe speler krijgt "Create a new
+  alias?"), en starten vanaf de ISO (video's, menu, 30 fps). Niet getest: een andere editie
+  (melding), en een pad kiezen in het venster zelf (tekst invoeren via toetsen kwam niet aan).
+
 ## Onderzocht
 
 - **"Vlekjes" op het eindscherm** (29-10, opgelost 30-10): geen renderfout maar een fout in onze

@@ -3,7 +3,7 @@
 # SDK boilerplate lives in generated/rexglue.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(nfsc LANGUAGES CXX)
+project(nfsc VERSION 0.75 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,6 +15,7 @@ set(NFSC_SOURCES
     src/main.cpp
     src/exit_option.cpp
     src/framerate.cpp
+    src/game_path.cpp
     src/profiles.cpp
     src/widescreen.cpp
 )
@@ -26,6 +27,13 @@ else()
 endif()
 
 rexglue_setup_target(nfsc GPU_PLUGINS xenos)
+
+target_compile_definitions(nfsc PRIVATE NFSC_VERSION="${PROJECT_VERSION}")
+
+# File dialog for choosing the disc image or game folder on the first start.
+if(WIN32)
+    target_link_libraries(nfsc PRIVATE comdlg32)
+endif()
 
 # FidelityFX (CAS/FSR presentation effects) is a runtime DLL of the SDK. The SDK
 # helper only stages it for in-tree builds (target amd_fidelityfx_vk), not for
