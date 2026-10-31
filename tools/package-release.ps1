@@ -3,9 +3,9 @@
 # extracted disc. The Remix profile is chosen in the game (PC SETTINGS).
 #
 # Usage (after building nfsc with the win-amd64-release preset):
-#   powershell -File tools\package-release.ps1 [-Version 0.75]
+#   powershell -File tools\package-release.ps1 [-Version 0.751]
 
-param([string]$Version = "0.75")
+param([string]$Version = "0.751")
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent

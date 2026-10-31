@@ -5,7 +5,7 @@ static recompilation with the [ReXGlue SDK](https://github.com/rexglue/rexglue-s
 game's PowerPC code is translated to C++ ahead of time and compiled for x86-64; graphics run
 on Vulkan (or Direct3D 12).
 
-**Version 0.75 – public test build.** The game is playable from start to finish as far as we
+**Version 0.751 – public test build.** The game is playable from start to finish as far as we
 know, but only a part of the Career has been tested. Please report what you find (see
 [Reporting problems](#reporting-problems)).
 

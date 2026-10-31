@@ -236,6 +236,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   alias?"), en starten vanaf de ISO (video's, menu, 30 fps). Niet getest: een andere editie
   (melding), en een pad kiezen in het venster zelf (tekst invoeren via toetsen kwam niet aan).
 
+## Release v0.751 (31-10)
+
+- PC SETTINGS in de game (zie Wensen) in plaats van `Play (Remix).bat`. Zip van 25,9 MB,
+  rooktest met de exe uit het pakket en een lege gebruikersmap: titel "v0.751", F1 opent het
+  venster. Release-notes in `docs/release-notes-v0.751.md`.
+
 ## Onderzocht
 
 - **"Vlekjes" op het eindscherm** (29-10, opgelost 30-10): geen renderfout maar een fout in onze
