@@ -16,6 +16,9 @@ void ApplyProfile();
 // command line). Returns false if the cvar does not exist.
 bool SetCvarDefault(std::string_view name, std::string_view value);
 
+// The value a profile gives a cvar, or "" if the profiles don't cover it.
+std::string ProfileDefault(std::string_view profile, std::string_view cvar);
+
 // Name of the active profile ("original" or "remix").
 std::string ActiveProfile();
 

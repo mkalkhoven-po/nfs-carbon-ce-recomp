@@ -13,10 +13,11 @@ include(generated/rexglue.cmake)
 # Sources
 set(NFSC_SOURCES
     src/main.cpp
-    src/exit_option.cpp
+    src/main_menu.cpp
     src/framerate.cpp
     src/game_path.cpp
     src/profiles.cpp
+    src/settings_window.cpp
     src/widescreen.cpp
 )
 

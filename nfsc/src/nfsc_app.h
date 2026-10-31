@@ -13,9 +13,10 @@
 #include <rex/system/gpu_plugin.h>
 #include <rex/ui/keybinds.h>
 
-#include "exit_option.h"
 #include "game_path.h"
+#include "main_menu.h"
 #include "profiles.h"
+#include "settings_window.h"
 #include "widescreen.h"
 
 class NfscApp : public rex::ReXApp {
@@ -49,15 +50,26 @@ class NfscApp : public rex::ReXApp {
   }
 
   // F11 switches between fullscreen and a window with a title bar (and close
-  // button). Alt+F4 or EXIT TO DESKTOP in the main menu exits.
+  // button). Alt+F4 or EXIT TO DESKTOP in the main menu exits. F1 or PC
+  // SETTINGS in the main menu opens the settings window.
   void OnPostSetup() override {
     // Same path as closing the window: terminates the title and exits.
     nfsc::SetQuitHandler([this] {
       app_context().CallInUIThread([this] { window()->RequestClose(); });
     });
+    nfsc::SetSettingsHandler([this] {
+      app_context().CallInUIThread([this] { nfsc::OpenSettingsWindow(imgui_drawer()); });
+    });
+    nfsc::SetRestartHandler([this] {
+      nfsc::StartNewInstance();
+      app_context().CallInUIThreadDeferred([this] { window()->RequestClose(); });
+    });
     rex::ui::RegisterBind("bind_fullscreen", "F11", "Toggle fullscreen", [] {
       bool fullscreen = rex::cvar::Query<bool>("fullscreen");
       rex::cvar::SetFlagByName("fullscreen", fullscreen ? "false" : "true");
+    });
+    rex::ui::RegisterBind("bind_pc_settings", "F1", "Toggle PC settings", [this] {
+      nfsc::ToggleSettingsWindow(imgui_drawer());
     });
   }
 
@@ -71,6 +83,8 @@ class NfscApp : public rex::ReXApp {
   // The game data: a disc image or an extracted folder, remembered after the
   // first start (see game_path.h).
   void OnConfigurePaths(rex::PathConfig& paths) override {
+    nfsc::WaitForPreviousInstance();
+    nfsc::SetSettingsConfigPath(paths.config_path);
     nfsc::ResolveGamePath(paths, rex::filesystem::GetExecutableFolder());
     if (paths.game_data_root.empty()) {
       std::quick_exit(0);  // No disc image or folder chosen.

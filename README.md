@@ -30,7 +30,7 @@ you own.
 - Widescreen and ultrawide (21:9, 32:9 or any ratio wider than 16:9): more view to the
   sides, HUD at the screen edges, videos and loading screens kept at 16:9.
 - Controller and keyboard at the same time.
-- "EXIT TO DESKTOP" in the main menu.
+- "PC SETTINGS" and "EXIT TO DESKTOP" in the main menu.
 
 ## Requirements
 
@@ -43,7 +43,8 @@ you own.
 ## Installing and starting
 
 1. Download the release zip and extract it anywhere.
-2. Start `nfsc.exe` (or `Play (Remix).bat` for the Remix profile).
+2. Start `nfsc.exe`. Choose the Remix profile and other options later under PC SETTINGS
+   in the main menu.
 3. On the first start a file dialog asks for the game. Choose either
    - the disc image (`.iso`), or
    - `default.xex` in a folder with the extracted disc.
@@ -67,14 +68,21 @@ An Xbox controller and the keyboard work at the same time.
 | `L` / `P` | X / Y |
 | `Return` / `Tab` | Start / Back |
 | `F11` | Fullscreen ↔ window |
-| `F4` | Settings (every option, saved to `nfsc.toml`) |
+| `F1` | PC settings (also in the main menu) |
+| `F4` | All settings, for advanced use |
 | `F3` | Performance overlay |
 | `Alt+F4` | Quit (or EXIT TO DESKTOP in the main menu) |
 
 ## Settings
 
-Set them in the settings window (`F4`), in `nfsc.toml` next to `nfsc.exe`, or on the command
-line (`--name=value`). Settings you change yourself always win over the profile.
+The main ones are in **PC SETTINGS** (main menu or `F1`): graphics profile, frame rate limit,
+aspect ratio, fullscreen or window, and under Advanced the resolution, sharpening, texture
+filtering and graphics API. Use a controller (A select, B back), the keyboard (WASD or arrows,
+`Space`, `Backspace`) or the mouse. "Profile (...)" means the graphics profile's value.
+**Apply** saves to `nfsc.toml` next to `nfsc.exe`; settings marked with `*` restart the game.
+
+Every setting can also be set in the advanced settings window (`F4`), in `nfsc.toml`, or on the
+command line (`--name=value`). Settings you change yourself always win over the profile.
 
 | Setting | Values | |
 |---|---|---|

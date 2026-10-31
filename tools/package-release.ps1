@@ -1,6 +1,6 @@
 # Puts the release build together as dist\<name>\ and dist\<name>.zip: the executable, the SDK
-# runtime DLLs, README, license texts and a Remix shortcut. No game files: players supply their
-# own disc image or extracted disc.
+# runtime DLLs, README and license texts. No game files: players supply their own disc image or
+# extracted disc. The Remix profile is chosen in the game (PC SETTINGS).
 #
 # Usage (after building nfsc with the win-amd64-release preset):
 #   powershell -File tools\package-release.ps1 [-Version 0.75]
@@ -31,7 +31,6 @@ foreach ($file in "nfsc.exe", "rexruntime.dll", "rexgpu-xenos.dll", "amd_fidelit
 Copy-Item (Join-Path $root "README.md") $out
 Copy-Item (Join-Path $root "LICENSE") (Join-Path $out "LICENSE.txt")
 Copy-Item (Join-Path $root "docs\release-notes-v$Version.md") (Join-Path $out "RELEASE-NOTES.md")
-Set-Content -Path (Join-Path $out "Play (Remix).bat") -Encoding ascii -Value '@start "" "%~dp0nfsc.exe" --profile=remix'
 
 # License texts: the SDK and the third-party libraries it builds in.
 Copy-Item (Join-Path $sdk "LICENSE") (Join-Path $out "licenses\rexglue-sdk.txt")

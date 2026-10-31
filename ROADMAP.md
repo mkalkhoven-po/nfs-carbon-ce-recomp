@@ -197,18 +197,40 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       Herkend aan het eigen label: ID 10 is in het pauzemenu PHOTO MODE (die sloot eerst de
       game af, gevonden en opgelost 29-10). In het pauzemenu niet nodig: daar staat al "terug
       naar het hoofdmenu".
+- [x] **Remix en opties in de game i.p.v. een .bat** (gevraagd 31-10, klaar 31-10). Menu-optie "PC SETTINGS" (ID 11, eigen label; `exit_option.cpp` heet
+      nu `main_menu.cpp`) en `F1` openen een eigen ImGui-venster (`settings_window.cpp`):
+      profiel, fps-limiet, beeldverhouding, volledig scherm/venster, en onder Advanced
+      resolutieschaal, CAS, anisotrope filtering en Vulkan/D3D12. "Profile (...)" = waarde van
+      het profiel. Apply zet alleen de gewijzigde sleutels in de root van `nfsc.toml` (rest en
+      commentaar blijven staan, anders dan "Save to config" in F4 die alles herschrijft), past
+      live-opties direct toe en herstart de game bij `*`-opties: het nieuwe proces start
+      meteen (zonder de gewijzigde `--opties` van de oude command line) en wacht via
+      `NFSC_WAIT_FOR_PID` tot het oude weg is. `atexit` werkt niet: de SDK sluit af met
+      `std::_Exit(0)` (`ReXApp::OnClosing`).
+      Controller/toetsenbord: de SDK-invoer kan niet tegelijk vanuit de UI-thread gelezen
+      worden (`InputSystem::RefreshDevices` bouwt de apparatenlijst per aanroep opnieuw op),
+      daarom pakt een hook op de XInputGetState-wrapper van de game (`sub_82941FE8`) de
+      padstand af zolang het venster open is en krijgt de game een losgelaten pad. Knoppen die
+      bij openen of sluiten nog ingedrukt zijn, bereiken het venster resp. de game niet.
+      `Play (Remix).bat` is uit het releasepakket.
+      Getest (toetsenbord, 1440p): menu-item past tussen OPTIONS en EXIT TO DESKTOP, F1 en
+      Backspace openen/sluiten zonder dat het spelmenu reageert, 60 fps live toegepast,
+      Remix en terug naar Original met herstart (nieuw proces 0,19 s na het oude, sleutels
+      verdwijnen weer uit `nfsc.toml`), venster/volledig scherm live. Tekst 3x bij 1440p,
+      1x in een venster van 1280x720. Apply is breder dan Close, anders landt de focus vanaf
+      de Advanced-balk op Close. Niet getest: een echte controller (zelfde hook-pad als het
+      toetsenbord via mnk).
 
 ## Release v0.75 (31-10)
 
 - Eerste publieke testversie, zonder gamebestanden: spelers kiezen bij de eerste start hun eigen
-  ISO of uitgepakte map (onthouden in `Documents
-fscgame_path.txt`; ook `game`-map of `.iso`
+  ISO of uitgepakte map (onthouden in `Documents\nfsc\game_path.txt`; ook `game`-map of `.iso`
   naast de exe). SDK-patch 0009 laat de runtime een ISO direct mounten.
 - Alleen de Collector's Edition werkt (de hercompileerde code hoort bij die ene `default.xex`):
   de exe controleert title-ID 454107EC, versie 0.0.0.7 en de eerste pagina-digest van de XEX
   en geeft anders een duidelijke melding (`--skip_edition_check` voor wie het toch wil).
-- Engelse README, BSD-3-licentie, release-notes, `toolspackage-release.ps1` (zip met exe, DLL's,
-  licentieteksten van de SDK en third-party, snelkoppeling voor Remix). Logs alleen lokaal.
+- Engelse README, BSD-3-licentie, release-notes, `tools\package-release.ps1` (zip met exe, DLL's,
+  licentieteksten van de SDK en third-party). Logs alleen lokaal.
 - Getest met het pakket in een lege map en lege gebruikersmap: kiesvenster en annuleren, `game`-
   map naast de exe (onthouden, editiecontrole, venstertitel, nieuwe speler krijgt "Create a new
   alias?"), en starten vanaf de ISO (video's, menu, 30 fps). Niet getest: een andere editie

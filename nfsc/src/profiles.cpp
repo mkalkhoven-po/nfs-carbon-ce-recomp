@@ -80,6 +80,15 @@ std::string GpuBackend() {
   return REXCVAR_GET(gpu_backend);
 }
 
+std::string ProfileDefault(std::string_view profile, std::string_view cvar) {
+  for (const auto& value : kProfileValues) {
+    if (value.cvar == cvar) {
+      return std::string(profile == "remix" ? value.remix : value.original);
+    }
+  }
+  return {};
+}
+
 bool SetCvarDefault(std::string_view name, std::string_view value) {
   for (auto& entry : rex::cvar::GetRegistry()) {
     if (entry.name != name)
