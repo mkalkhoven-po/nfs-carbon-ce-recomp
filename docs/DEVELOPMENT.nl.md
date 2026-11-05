@@ -61,6 +61,10 @@ Upstream aangeboden (rexglue/rexglue-sdk, tegen `development`): 0001 als issue #
 PR's nagelopen; de terechte punten staan als tweede commit in elke PR en zitten ook in de
 lokale patches (0001, 0002 en 0007 zijn de upstream-versies, met clang-format).
 
+- `0010-input-system-thread-safe.patch` (`input_system`): een mutex om de publieke
+  `InputSystem`-aanroepen, die per aanroep de apparatenlijst opnieuw opbouwen. Nodig omdat PC
+  SETTINGS de pad vanuit de UI-thread leest: de game leest hem niet tijdens de pauze van de
+  systeem-UI-melding.
 - `0009-runtime-disc-image-game-data-root.patch` (`runtime`, `rex_app`): `game_data_root` mag ook
   een disc-image (`.iso`) zijn; dat wordt dan met de `DiscImageDevice` van de SDK gemount in
   plaats van een map. Zo kunnen spelers de ISO direct kiezen (v0.75).

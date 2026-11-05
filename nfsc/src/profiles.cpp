@@ -79,6 +79,8 @@ constexpr std::array kProfileValues = {
     // Not graphics, but a sensible default for both: keyboard controls next to
     // a controller (the input system merges both devices for player 1).
     ProfileValue{"mnk_mode", "true", "true"},
+    // The console's start with its logos and videos, or straight to the menu.
+    ProfileValue{"skip_intro", "false", "true"},
 };
 
 }  // namespace

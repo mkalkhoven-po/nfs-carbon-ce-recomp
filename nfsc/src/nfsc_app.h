@@ -11,14 +11,19 @@
 #include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/system/gpu_plugin.h>
+#include <rex/system/kernel_state.h>
 #include <rex/ui/keybinds.h>
 
 #include "crash_report.h"
 #include "game_path.h"
 #include "main_menu.h"
+#include "pad.h"
 #include "profiles.h"
 #include "settings_window.h"
 #include "widescreen.h"
+
+REXCVAR_DEFINE_BOOL(pause_in_background, true, "NFSC",
+                    "Pause a race and ignore the controller while the window isn't in focus");
 
 class NfscApp : public rex::ReXApp {
  public:
@@ -61,6 +66,10 @@ class NfscApp : public rex::ReXApp {
     nfsc::SetSettingsHandler([this] {
       app_context().CallInUIThread([this] { nfsc::OpenSettingsWindow(imgui_drawer()); });
     });
+    nfsc::SetPauseHandler([this](bool open) {
+      settings_open_ = open;
+      UpdateGuestPause();
+    });
     nfsc::SetRestartHandler([this] {
       nfsc::StartNewInstance();
       app_context().CallInUIThreadDeferred([this] { window()->RequestClose(); });
@@ -82,6 +91,7 @@ class NfscApp : public rex::ReXApp {
   // After the SDK has set its own title (in SetupPresentation).
   void OnPreLaunchModule() override {
     nfsc::TestCrash();
+    nfsc::StartIntroSkip();
     window()->SetTitle(fmt::format(
         "Need for Speed: Carbon Collector's Edition - Recompiled v{} ({})", NFSC_VERSION,
         nfsc::ActiveProfile() == "remix" ? "Remix" : "Original"));
@@ -106,6 +116,12 @@ class NfscApp : public rex::ReXApp {
     }
   }
 
+  void OnWindowFocusChanged(bool focused) override {
+    background_ = !focused && REXCVAR_GET(pause_in_background);
+    nfsc::SetPadBlockedInBackground(background_);
+    UpdateGuestPause();
+  }
+
   // Override virtual hooks for customization:
   // void OnPostInitLogging() override {}
   // void OnLoadXexImage(std::string& xex_image) override {}
@@ -117,4 +133,21 @@ class NfscApp : public rex::ReXApp {
   // CreateAchievementNotificationDialog() override;
   // void OnShutdown() override {}
   // void OnConfigurePaths(rex::PathConfig& paths) override {}
+
+ private:
+  // The notification the Xbox guide sends (XN_SYS_UI). The game pauses a race on
+  // it, like it must on the console.
+  static constexpr uint32_t kSystemUiNotification = 0x9;
+
+  void UpdateGuestPause() {
+    const bool paused = settings_open_ || background_;
+    if (paused != guest_paused_ && runtime() && runtime()->kernel_state()) {
+      guest_paused_ = paused;
+      runtime()->kernel_state()->BroadcastNotification(kSystemUiNotification, paused);
+    }
+  }
+
+  bool settings_open_ = false;
+  bool background_ = false;
+  bool guest_paused_ = false;
 };

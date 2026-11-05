@@ -1,4 +1,5 @@
-// nfsc - "PC SETTINGS" and "EXIT TO DESKTOP" options at the end of the main menu.
+// nfsc - "PC SETTINGS" and "EXIT TO DESKTOP" options at the end of the main menu,
+// and leaving out the online options.
 //
 // Reverse engineered from default.xex (title 454107EC, v0.0.0.7):
 //   sub_82642DB0  main menu setup: for each option allocates 152 bytes,
@@ -21,6 +22,7 @@
 #include <rex/logging.h>
 
 #include "main_menu.h"
+#include "pad.h"
 
 REX_EXTERN(__imp__sub_82642DB0);  // main menu setup
 REX_EXTERN(__imp__sub_82313658);  // menu: add option
@@ -33,6 +35,8 @@ namespace {
 
 constexpr uint32_t kOptionsLabel = 0xD128F223;
 constexpr uint32_t kOptionsId = 7;
+constexpr uint32_t kCustomMatchLabel = 0xBD84501E;
+constexpr uint32_t kQuickMatchLabel = 0xCA4CF300;
 constexpr uint32_t kAcceptMessage = 0x0C407210;
 constexpr uint32_t kOptionSize = 152;
 constexpr uint32_t kOptionLabelOffset = 44;
@@ -80,6 +84,7 @@ void SetSettingsHandler(std::function<void()> handler) {
 // Main menu setup: only mark the window in which options are added, so the
 // add-option hook below does not touch other menus.
 REX_HOOK_RAW(sub_82642DB0) {
+  nfsc::StopIntroSkip();
   g_in_main_menu_setup = true;
   __imp__sub_82642DB0(ctx, base);
   g_in_main_menu_setup = false;
@@ -90,6 +95,13 @@ REX_HOOK_RAW(sub_82642DB0) {
 REX_HOOK_RAW(sub_82313658) {
   const uint32_t menu = ctx.r3.u32;
   const uint32_t option = ctx.r4.u32;
+  // Without Xbox Live these only say "Cannot connect to Xbox Live!".
+  if (g_in_main_menu_setup && option != 0) {
+    const uint32_t label = LoadU32(base, option + kOptionLabelOffset);
+    if (label == kCustomMatchLabel || label == kQuickMatchLabel) {
+      return;
+    }
+  }
   const bool after_options = g_in_main_menu_setup && option != 0 &&
                              LoadU32(base, option + kOptionLabelOffset) == kOptionsLabel &&
                              LoadU32(base, option + kOptionIdOffset) == kOptionsId;

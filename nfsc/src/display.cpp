@@ -70,9 +70,13 @@ DisplayMode ReadDisplay() {
 #if defined(_WIN32)
   std::vector<std::wstring> names;
   EnumDisplayMonitors(nullptr, nullptr, AddMonitor, reinterpret_cast<LPARAM>(&names));
-  const size_t index = size_t(std::max(rex::cvar::Query<int32_t>("monitor") - 1, 0));
-  if (index >= names.size()) {
+  if (names.empty()) {
     return mode;
+  }
+  // A monitor that isn't there means the default one, as in the SDK.
+  size_t index = size_t(std::max(rex::cvar::Query<int32_t>("monitor") - 1, 0));
+  if (index >= names.size()) {
+    index = 0;
   }
   DEVMODEW settings = {};
   settings.dmSize = sizeof(settings);

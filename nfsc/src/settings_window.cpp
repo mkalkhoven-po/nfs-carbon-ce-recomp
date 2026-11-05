@@ -1,16 +1,11 @@
 // nfsc - the in-game PC SETTINGS window (see settings_window.h).
 //
-// Controller and keyboard: while the window is open, the game's own pad reads
-// (sub_82941FE8, its XInputGetState wrapper) are handed to the window and the
-// game sees an untouched pad. The SDK's input system rebuilds its device list
-// on every poll, so it can't be polled from the UI thread while the game polls
-// it; taking the state from the game's read avoids that. Keyboard keys arrive
-// the same way, through the keyboard-to-controller mapping (mnk_mode).
+// Controller and keyboard reach the window through pad.h; while it is open, the
+// game gets the same notification as when the Xbox guide opens and pauses a race.
 
 #include "settings_window.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -25,10 +20,10 @@
 #include <imgui.h>
 
 #include <rex/cvar.h>
-#include <rex/hook.h>
 #include <rex/input/input.h>
 #include <rex/logging.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/keybinds.h>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -36,69 +31,16 @@
 #endif
 
 #include "display.h"
+#include "pad.h"
 #include "profiles.h"
-
-REX_EXTERN(__imp__sub_82941FE8);  // XInputGetState wrapper
 
 namespace {
 
 using namespace rex::input;
 
-// Pad state taken from the game's reads: the buttons, with both sticks folded
-// into the d-pad (the keyboard's WASD and arrow keys are the two sticks).
-// Capturing starts when the window opens and ends once the pad is released
-// after it closed, so the button that closed it doesn't reach the game.
-std::atomic<bool> g_capture{false};
-std::atomic<bool> g_window_open{false};
-std::atomic<uint32_t> g_pad{0};
-std::atomic<uint32_t> g_pad_samples{0};
-
-constexpr int kStickThreshold = 16384;
-
-uint16_t LoadU16(const uint8_t* p) {
-  return uint16_t(p[0] << 8 | p[1]);
-}
-
-uint32_t StickToDpad(int16_t x, int16_t y) {
-  uint32_t dpad = 0;
-  if (y > kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_UP;
-  if (y < -kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_DOWN;
-  if (x < -kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_LEFT;
-  if (x > kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_RIGHT;
-  return dpad;
-}
-
-}  // namespace
-
-// The game's XInputGetState wrapper: r3 = user index, r4 = XINPUT_STATE.
-REX_HOOK_RAW(sub_82941FE8) {
-  const uint32_t user = ctx.r3.u32;
-  const uint32_t state = ctx.r4.u32;
-  __imp__sub_82941FE8(ctx, base);
-  if (!g_capture || user != 0 || ctx.r3.u32 != 0 || state == 0) {
-    return;
-  }
-  // XINPUT_GAMEPAD after dwPacketNumber: buttons, triggers, then the sticks.
-  uint8_t* gamepad = base + state + 4;
-  uint32_t pad = LoadU16(gamepad);
-  pad |= StickToDpad(int16_t(LoadU16(gamepad + 4)), int16_t(LoadU16(gamepad + 6)));
-  pad |= StickToDpad(int16_t(LoadU16(gamepad + 8)), int16_t(LoadU16(gamepad + 10)));
-  std::memset(gamepad, 0, 12);
-  g_pad = pad;
-  g_pad_samples++;
-  if (!g_window_open && pad == 0) {
-    g_capture = false;
-  }
-}
-
-namespace {
-
 std::filesystem::path g_config_path;
 std::function<void()> g_restart_handler;
+std::function<void(bool)> g_pause_handler;
 // Cvars changed in the window this session; the restart leaves them off the
 // command line so nfsc.toml decides.
 std::set<std::string> g_changed;
@@ -128,6 +70,10 @@ std::string FormatScale(std::string_view value) {
   if (value == "3")
     return "3x (2160p)";
   return fmt::format("{}x", value);
+}
+
+std::string FormatIntro(std::string_view value) {
+  return value == "true" ? "Skip" : "Play";
 }
 
 std::string FormatEffect(std::string_view value) {
@@ -164,6 +110,47 @@ struct Setting {
 
 constexpr size_t kProfileSetting = 0;
 
+// The keyboard's controller mapping (mnk_mode).
+struct KeyBind {
+  const char* label;
+  const char* cvar;
+  std::string initial = {};
+  std::string pending = {};
+};
+
+std::vector<KeyBind> BuildKeyBinds() {
+  std::vector<KeyBind> binds = {
+      {"Steer left", "keybind_lstick_left"},     {"Steer right", "keybind_lstick_right"},
+      {"Up", "keybind_lstick_up"},               {"Down", "keybind_lstick_down"},
+      {"Throttle (RT)", "keybind_right_trigger"}, {"Brake (LT)", "keybind_left_trigger"},
+      {"A button", "keybind_a"},                 {"B button", "keybind_b"},
+      {"X button", "keybind_x"},                 {"Y button", "keybind_y"},
+      {"Left shoulder (LB)", "keybind_left_shoulder"},
+      {"Right shoulder (RB)", "keybind_right_shoulder"},
+      {"Start", "keybind_start"},                {"Back", "keybind_back"},
+  };
+  std::erase_if(binds, [](const KeyBind& bind) { return !rex::cvar::GetFlagInfo(bind.cvar); });
+  for (auto& bind : binds) {
+    bind.initial = rex::cvar::GetFlagInfo(bind.cvar)->getter();
+    bind.pending = bind.initial;
+  }
+  return binds;
+}
+
+// The name of a key that is down, or "".
+std::string PressedKey() {
+#if defined(_WIN32)
+  for (int vk = 0x08; vk < 0xFF; ++vk) {
+    if (GetAsyncKeyState(vk) & 0x8000) {
+      std::string name = rex::ui::VirtualKeyToString(static_cast<rex::ui::VirtualKey>(vk));
+      if (!name.empty())
+        return name;
+    }
+  }
+#endif
+  return {};
+}
+
 std::vector<Setting> BuildSettings() {
   std::vector<Setting> settings = {
       {"Graphics profile", {"profile"}, true, false, false, nullptr,
@@ -180,6 +167,8 @@ std::vector<Setting> BuildSettings() {
         {"32:9", "32:9"}}},
       {"Display", {"fullscreen"}, false, false, false, nullptr,
        {{"", "Fullscreen"}, {"false", "Window"}}},
+      {"Logos and intro videos", {"skip_intro"}, false, false, true, FormatIntro,
+       {{"false", ""}, {"true", ""}}},
       {"Resolution", {"draw_resolution_scale_x", "draw_resolution_scale_y"}, true, true, true,
        FormatScale, {{"1", ""}, {"2", ""}, {"3", ""}}},
       {"Sharpening", {"present_effect"}, true, true, true, FormatEffect,
@@ -356,16 +345,16 @@ bool SaveToConfig(const std::vector<std::pair<std::string, std::string>>& change
 class SettingsWindow final : public rex::ui::ImGuiDialog {
  public:
   explicit SettingsWindow(rex::ui::ImGuiDrawer* drawer)
-      : ImGuiDialog(drawer), settings_(BuildSettings()) {
+      : ImGuiDialog(drawer), settings_(BuildSettings()), binds_(BuildKeyBinds()) {
     for (auto& setting : settings_) {
       initial_.push_back(CurrentChoice(setting));
     }
     pending_ = initial_;
 
-    g_pad = 0;
-    pad_samples_at_open_ = g_pad_samples;
-    g_window_open = true;
-    g_capture = true;
+    nfsc::SetPadCaptured(true);
+    if (g_pause_handler) {
+      g_pause_handler(true);
+    }
 
     ImGuiIO& io = GetIO();
     had_gamepad_nav_ = (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) != 0;
@@ -396,20 +385,29 @@ class SettingsWindow final : public rex::ui::ImGuiDialog {
 
   void FeedPad(ImGuiIO& io);
   void DrawSetting(size_t index, float label_width, float combo_width);
+  void DrawSettings();
+  void DrawKeyBinds();
+  void UpdateKeyCapture();
+  void FocusFirstItem();
   bool Apply();
+  bool HasChanges() const;
   bool NeedsRestart() const;
 
   std::vector<Setting> settings_;
+  std::vector<KeyBind> binds_;
   std::vector<std::string> initial_;
   std::vector<std::string> pending_;
   bool closing_ = false;
   bool save_failed_ = false;
+  bool show_key_binds_ = false;
+  bool focus_first_item_ = false;
+  int capturing_key_ = -1;  // index in binds_
+  bool capture_armed_ = false;  // the key that started the capture is released
   bool first_frame_ = true;
   bool had_gamepad_nav_ = false;
   // Buttons held when the window opened (the one that opened it) are ignored
   // until released.
   uint32_t ignored_buttons_ = ~0u;
-  uint32_t pad_samples_at_open_ = 0;
   uint32_t previous_pad_ = 0;
 };
 
@@ -423,26 +421,38 @@ void SettingsWindow::OnClose() {
   if (!had_gamepad_nav_) {
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
   }
-  g_window_open = false;
+  nfsc::SetPadCaptured(false);
+  if (g_pause_handler) {
+    g_pause_handler(false);
+  }
   g_window = nullptr;
 }
 
 void SettingsWindow::FeedPad(ImGuiIO& io) {
-  uint32_t pad = g_pad;
-  if (g_pad_samples != pad_samples_at_open_) {
-    ignored_buttons_ &= pad;
-  }
+  uint32_t pad = capturing_key_ >= 0 ? 0 : nfsc::ReadPad();
+  ignored_buttons_ &= pad;
   pad &= ~ignored_buttons_;
   for (const auto& pad_key : kPadKeys) {
     io.AddKeyEvent(pad_key.key, (pad & pad_key.buttons) != 0);
   }
-  // B closes the window, unless it closes an open list first.
+  // B goes back, unless it closes an open list first.
   const bool b_pressed = (pad & X_INPUT_GAMEPAD_B) && !(previous_pad_ & X_INPUT_GAMEPAD_B);
   if (b_pressed &&
       !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-    closing_ = true;
+    if (show_key_binds_) {
+      show_key_binds_ = false;
+      focus_first_item_ = true;
+    } else {
+      closing_ = true;
+    }
   }
   previous_pad_ = pad;
+}
+
+bool SettingsWindow::HasChanges() const {
+  return pending_ != initial_ ||
+         std::any_of(binds_.begin(), binds_.end(),
+                     [](const KeyBind& bind) { return bind.pending != bind.initial; });
 }
 
 bool SettingsWindow::NeedsRestart() const {
@@ -472,16 +482,94 @@ bool SettingsWindow::Apply() {
       nfsc::ApplyFrameRateLimit();
     }
   }
+  for (const auto& bind : binds_) {
+    if (bind.pending == bind.initial)
+      continue;
+    // A key back at its default goes out of nfsc.toml.
+    const bool is_default = bind.pending == rex::cvar::GetFlagInfo(bind.cvar)->default_value;
+    changes.emplace_back(bind.cvar, is_default ? std::string() : bind.pending);
+    g_changed.insert(bind.cvar);
+    ApplyLive(bind.cvar, is_default ? std::string() : bind.pending);
+  }
   save_failed_ = !SaveToConfig(changes);
   if (save_failed_) {
     return false;
   }
   const bool restart = NeedsRestart();
   initial_ = pending_;
+  for (auto& bind : binds_) {
+    bind.initial = bind.pending;
+  }
   if (restart && g_restart_handler) {
     g_restart_handler();
   }
   return true;
+}
+
+void SettingsWindow::FocusFirstItem() {
+  if (focus_first_item_) {
+    ImGui::SetKeyboardFocusHere();
+    focus_first_item_ = false;
+  }
+}
+
+void SettingsWindow::UpdateKeyCapture() {
+  if (capturing_key_ < 0)
+    return;
+  const std::string key = PressedKey();
+  if (!capture_armed_) {
+    capture_armed_ = key.empty();
+    return;
+  }
+  if (key.empty())
+    return;
+  if (!ImGui::IsKeyDown(ImGuiKey_Escape)) {
+    binds_[capturing_key_].pending = key;
+  }
+  capturing_key_ = -1;
+  ignored_buttons_ = ~0u;  // Until the key is released again.
+}
+
+void SettingsWindow::DrawKeyBinds() {
+  float label_width = 0.0f;
+  for (const auto& bind : binds_) {
+    label_width = std::max(label_width, ImGui::CalcTextSize(bind.label).x);
+  }
+  label_width += ImGui::GetStyle().ItemSpacing.x * 3 + ImGui::GetStyle().WindowPadding.x;
+  const float key_width = ImGui::CalcTextSize("Press a key (Esc cancels)").x +
+                          ImGui::GetStyle().FramePadding.x * 2;
+  for (size_t i = 0; i < binds_.size(); i++) {
+    ImGui::PushID(int(i));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(binds_[i].label);
+    ImGui::SameLine(label_width);
+    FocusFirstItem();
+    const bool capturing = capturing_key_ == int(i);
+    if (ImGui::Button(capturing ? "Press a key (Esc cancels)" : binds_[i].pending.c_str(),
+                      ImVec2(key_width, 0.0f))) {
+      capturing_key_ = int(i);
+      capture_armed_ = false;
+    }
+    const bool in_use = std::any_of(binds_.begin(), binds_.end(), [&](const KeyBind& other) {
+      return &other != &binds_[i] && other.pending == binds_[i].pending;
+    });
+    if (in_use) {
+      ImGui::SameLine();
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "Also used above or below");
+    }
+    ImGui::PopID();
+  }
+  ImGui::Spacing();
+  if (ImGui::Button("Back to settings")) {
+    show_key_binds_ = false;
+    focus_first_item_ = true;
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Reset keys")) {
+    for (auto& bind : binds_) {
+      bind.pending = rex::cvar::GetFlagInfo(bind.cvar)->default_value;
+    }
+  }
 }
 
 void SettingsWindow::DrawSetting(size_t index, float label_width, float combo_width) {
@@ -492,6 +580,7 @@ void SettingsWindow::DrawSetting(size_t index, float label_width, float combo_wi
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted(setting.label);
   ImGui::SameLine(label_width);
+  FocusFirstItem();
   ImGui::SetNextItemWidth(combo_width);
   const std::string current = ChoiceLabel(setting, pending_[index], profile);
   if (ImGui::BeginCombo("##value", current.c_str())) {
@@ -512,15 +601,48 @@ void SettingsWindow::DrawSetting(size_t index, float label_width, float combo_wi
   ImGui::PopID();
 }
 
+void SettingsWindow::DrawSettings() {
+  const std::string profile = pending_[kProfileSetting].empty() ? "original"
+                                                                : pending_[kProfileSetting];
+  float label_width = 0.0f;
+  float combo_width = 0.0f;
+  for (const auto& setting : settings_) {
+    label_width = std::max(label_width, ImGui::CalcTextSize(setting.label).x);
+    for (const auto& choice : setting.choices) {
+      combo_width = std::max(
+          combo_width, ImGui::CalcTextSize(ChoiceLabel(setting, choice.value, profile).c_str()).x);
+    }
+  }
+  label_width += ImGui::GetStyle().ItemSpacing.x * 3 + ImGui::GetStyle().WindowPadding.x;
+  combo_width += ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 4;
+
+  for (size_t i = 0; i < settings_.size(); i++) {
+    if (!settings_[i].advanced)
+      DrawSetting(i, label_width, combo_width);
+  }
+  ImGui::Spacing();
+  if (ImGui::CollapsingHeader("Advanced")) {
+    for (size_t i = 0; i < settings_.size(); i++) {
+      if (settings_[i].advanced)
+        DrawSetting(i, label_width, combo_width);
+    }
+  }
+  if (ImGui::Button("Keyboard controls", ImVec2(-1.0f, 0.0f))) {
+    show_key_binds_ = true;
+    focus_first_item_ = true;
+  }
+}
+
 void SettingsWindow::OnDraw(ImGuiIO& io) {
   if (closing_) {
     Close();
     return;
   }
   FeedPad(io);
-  if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+  if (capturing_key_ < 0 && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
     closing_ = true;
   }
+  UpdateKeyCapture();
 
   // The SDK's ImGui font is a small bitmap font; scale it in whole steps (3x at
   // 1440p, 1x in a 1280x720 window).
@@ -547,30 +669,10 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
   if (ImGui::Begin("PC Settings##nfsc", &open,
                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse |
                        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove)) {
-    const std::string profile = pending_[kProfileSetting].empty() ? "original"
-                                                                  : pending_[kProfileSetting];
-    float label_width = 0.0f;
-    float combo_width = 0.0f;
-    for (const auto& setting : settings_) {
-      label_width = std::max(label_width, ImGui::CalcTextSize(setting.label).x);
-      for (const auto& choice : setting.choices) {
-        combo_width = std::max(
-            combo_width, ImGui::CalcTextSize(ChoiceLabel(setting, choice.value, profile).c_str()).x);
-      }
-    }
-    label_width += ImGui::GetStyle().ItemSpacing.x * 3 + ImGui::GetStyle().WindowPadding.x;
-    combo_width += ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 4;
-
-    for (size_t i = 0; i < settings_.size(); i++) {
-      if (!settings_[i].advanced)
-        DrawSetting(i, label_width, combo_width);
-    }
-    ImGui::Spacing();
-    if (ImGui::CollapsingHeader("Advanced")) {
-      for (size_t i = 0; i < settings_.size(); i++) {
-        if (settings_[i].advanced)
-          DrawSetting(i, label_width, combo_width);
-      }
+    if (show_key_binds_) {
+      DrawKeyBinds();
+    } else {
+      DrawSettings();
     }
 
     ImGui::Separator();
@@ -578,12 +680,17 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
       ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f),
                          "Could not save nfsc.toml. Move the game to a folder you can write to.");
     }
-    ImGui::TextDisabled("* Takes effect after a restart.");
+    if (NeedsRestart()) {
+      ImGui::TextUnformatted("Restarting goes back to the main menu; unsaved progress is lost.");
+    }
+    if (!show_key_binds_) {
+      ImGui::TextDisabled("* Takes effect after a restart.");
+    }
     ImGui::Spacing();
     // Apply is the wider button, so moving down from the full-width Advanced
     // header lands on it (ImGui picks the candidate nearest to its center).
     const float buttons_width = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x;
-    ImGui::BeginDisabled(pending_ == initial_);
+    ImGui::BeginDisabled(!HasChanges());
     if (ImGui::Button(NeedsRestart() ? "Apply and restart" : "Apply",
                       ImVec2(buttons_width * 0.65f, 0.0f))) {
       closing_ = Apply();
@@ -672,6 +779,10 @@ void SetSettingsConfigPath(std::filesystem::path path) {
 
 void SetRestartHandler(std::function<void()> handler) {
   g_restart_handler = std::move(handler);
+}
+
+void SetPauseHandler(std::function<void(bool)> handler) {
+  g_pause_handler = std::move(handler);
 }
 
 void OpenSettingsWindow(rex::ui::ImGuiDrawer* drawer) {

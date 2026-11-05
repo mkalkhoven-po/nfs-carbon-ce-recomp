@@ -32,7 +32,11 @@ you own.
   than 16:9): more view to the sides, HUD at the screen edges, videos and loading screens kept
   at 16:9.
 - Controller and keyboard at the same time.
-- "PC SETTINGS" and "EXIT TO DESKTOP" in the main menu.
+- "PC SETTINGS" and "EXIT TO DESKTOP" in the main menu. The online options are gone, because
+  they only say that Xbox Live can't be reached.
+- A race pauses when you open PC SETTINGS or switch to another window, and goes on when you
+  come back.
+- With Remix the game skips the logos and intro videos and goes straight to the main menu.
 
 ## Requirements
 
@@ -86,8 +90,8 @@ An Xbox controller and the keyboard work at the same time.
 ## Settings
 
 The main ones are in **PC SETTINGS** (main menu or `F1`): graphics profile, frame rate limit,
-aspect ratio, fullscreen or window, and under Advanced the resolution, sharpening, texture
-filtering, graphics API and save location. Use a controller (A select, B back), the keyboard (WASD or arrows,
+aspect ratio, fullscreen or window, the intro videos, keyboard controls, and under Advanced the
+resolution, sharpening, texture filtering, graphics API and save location. Use a controller (A select, B back), the keyboard (WASD or arrows,
 `Space`, `Backspace`) or the mouse. "Profile: ..." means the graphics profile's value.
 **Apply** saves to `nfsc.toml` next to `nfsc.exe`; settings marked with `*` restart the game.
 
@@ -102,6 +106,8 @@ command line (`--name=value`). Settings you change yourself always win over the 
 | `draw_resolution_scale_x` / `_y` | `1`, `2`, `3` | Internal resolution: 720p, 1440p, 4K |
 | `fullscreen` | `true`, `false` | |
 | `gpu_backend` | `vulkan`, `d3d12` | (restart) |
+| `skip_intro` | `true`, `false` | Skip logos and videos up to the main menu |
+| `pause_in_background` | `true`, `false` | Pause a race and ignore the controller while in the background |
 | `portable` | `true`, `false` | Savegames and shader cache next to `nfsc.exe` (restart) |
 | `cache_root` | path | Shader cache folder (restart) |
 

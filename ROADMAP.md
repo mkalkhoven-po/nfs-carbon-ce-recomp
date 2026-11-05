@@ -248,7 +248,28 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       (herstart, savegame en cache gekopieerd, 234 pipelines geladen), crash en abort (dump van
       ~265 KB, melding, log), alleen-lezen `nfsc.toml` (melding, geen herstart). Niet getest: een
       echte 144 Hz- of ultrawide-monitor (het effect op frame pacing en `aspect_ratio = auto` buiten
-      16:9), meerdere monitoren, `__fastfail`, een echte controller.
+      16:9), `__fastfail`, een echte controller.
+      Tweede scherm (5-11, 2560x1440, 143,97 Hz, `--monitor=2`): exact herkend, Monitor geeft
+      144 fps in het menu. Race (Quick Race, gas, 45 s): met Monitor gemiddeld 113,5 (minimum
+      76,5), met `frame_rate_limit=120` 117,2 (minimum 84,2): de CPU haalt die 144 in een race niet,
+      en het verschil kan ook aan de AI liggen. Effect op het oog nog niet beoordeeld.
+      Niet-bestaand monitornummer viel eerst terug op 1080p/60; nu het hoofdscherm, net als de SDK.
+- [x] **Pakket 2 uit de code-analyse** (klaar 5-11).
+      - *Pauze:* PC SETTINGS openen en focusverlies sturen de notificatie die de Xbox-gids stuurt
+        (XN_SYS_UI, 0x9): de game toont zijn eigen PAUSE-scherm in races en gaat bij "uit" vanzelf
+        verder. Geen reverse-engineering nodig. Tijdens die pauze leest de game de pad niet, dus het
+        venster leest hem zelf (`pad.cpp`, SDK-patch 0010: mutex in `InputSystem`). Filmpjes vóór de
+        race pauzeren niet. `pause_in_background` (standaard aan) blokkeert ook de pad op de
+        achtergrond. "Apply and restart" waarschuwt voor niet-opgeslagen voortgang.
+      - *Intro's overslaan:* `skip_intro` (Remix aan, Original uit) drukt Start in pulsen tot de
+        menu-opbouw (`sub_82642DB0`). Hoofdmenu in 17 s zonder toets (was ~30 s met de hand).
+        Nieuwe speler: "Create a new alias?" blijft staan, Start kiest daar niets; elke echte toets
+        stopt de pulsen, en na 60 s stoppen ze sowieso.
+      - *Online:* CUSTOM MATCH (label BD84501E, id 5) en QUICK MATCH (CA4CF300, id 4) gaven alleen
+        "Cannot connect to Xbox Live!" en worden niet meer toegevoegd.
+      - *Toetsen:* "Keyboard controls" in PC SETTINGS, voor de 14 meest gebruikte `keybind_*`-cvars.
+        Een nieuwe toets vervangt alle eerdere (ook `Semicolon,Space`), dubbele toetsen krijgen een
+        melding, "Reset keys" zet ze terug en de regels verdwijnen weer uit `nfsc.toml`.
 
 ## Release v0.75 (31-10)
 

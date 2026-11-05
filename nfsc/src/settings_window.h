@@ -19,6 +19,9 @@ void SetSettingsConfigPath(std::filesystem::path path);
 // calls StartNewInstance and closes the app.
 void SetRestartHandler(std::function<void()> handler);
 
+// Called on the UI thread when the window opens (true) and closes (false).
+void SetPauseHandler(std::function<void(bool)> handler);
+
 // Opens the window, or closes it if it is open. UI thread only.
 void ToggleSettingsWindow(rex::ui::ImGuiDrawer* drawer);
 void OpenSettingsWindow(rex::ui::ImGuiDrawer* drawer);

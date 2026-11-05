@@ -14,6 +14,7 @@ include(generated/rexglue.cmake)
 set(NFSC_SOURCES
     src/main.cpp
     src/main_menu.cpp
+    src/pad.cpp
     src/crash_report.cpp
     src/display.cpp
     src/framerate.cpp
