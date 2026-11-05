@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -27,6 +28,11 @@
 REXCVAR_DEFINE_BOOL(skip_edition_check, false, "NFSC",
                     "Start even if default.xex is not the Collector's Edition executable this "
                     "build was recompiled from (it will most likely crash)")
+    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+REXCVAR_DEFINE_BOOL(portable, false, "NFSC",
+                    "Keep savegames, the shader cache and the remembered game path in a "
+                    "\"userdata\" folder next to nfsc.exe")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace nfsc {
@@ -117,6 +123,46 @@ std::filesystem::path PickGamePath() {
 #endif
 }
 
+// Where the shader cache goes by default. Not in Documents, which is often
+// synced by OneDrive.
+std::filesystem::path LocalCacheFolder() {
+#if defined(_WIN32)
+  if (const wchar_t* local_app_data = _wgetenv(L"LOCALAPPDATA")) {
+    return std::filesystem::path(local_app_data) / "nfsc" / "cache";
+  }
+#endif
+  return {};
+}
+
+// Moves the cache of earlier versions, so that it doesn't have to build up again.
+void MoveCache(const std::filesystem::path& from, const std::filesystem::path& to) {
+  std::error_code ec;
+  if (!std::filesystem::is_directory(from, ec) || std::filesystem::exists(to, ec)) {
+    return;
+  }
+  std::filesystem::create_directories(to.parent_path(), ec);
+  std::filesystem::rename(from, to, ec);
+  if (ec) {  // Another drive.
+    std::filesystem::copy(from, to, std::filesystem::copy_options::recursive, ec);
+    if (!ec) {
+      std::filesystem::remove_all(from, ec);
+    }
+  }
+}
+
+// The first portable start takes the savegames and shader cache along. The
+// originals stay where they are.
+void CopyToPortable(const std::filesystem::path& user_dir, const std::filesystem::path& cache_dir,
+                    const std::filesystem::path& portable_dir) {
+  const auto options = std::filesystem::copy_options::recursive;
+  std::error_code ec;
+  std::filesystem::create_directories(portable_dir, ec);
+  std::filesystem::copy(user_dir, portable_dir, options, ec);
+  if (!cache_dir.empty() && std::filesystem::is_directory(cache_dir, ec)) {
+    std::filesystem::copy(cache_dir, portable_dir / "cache", options, ec);
+  }
+}
+
 std::string Hex(const uint8_t* data, size_t size) {
   std::string out;
   for (size_t i = 0; i < size; ++i) {
@@ -126,6 +172,38 @@ std::string Hex(const uint8_t* data, size_t size) {
 }
 
 }  // namespace
+
+void ConfigureDataPaths(rex::PathConfig& paths, const std::filesystem::path& exe_dir) {
+  std::error_code ec;
+  // The SDK reads the path settings before it loads nfsc.toml, so they would
+  // only work on the command line.
+  if (std::filesystem::exists(paths.config_path, ec)) {
+    rex::cvar::LoadConfig(paths.config_path);
+  }
+  const std::filesystem::path default_user_dir = paths.user_data_root;
+  const std::filesystem::path local_cache_dir = LocalCacheFolder();
+  const std::string user_dir = rex::cvar::GetFlagByName("user_data_root");
+  const std::string cache_dir = rex::cvar::GetFlagByName("cache_root");
+  const bool portable = REXCVAR_GET(portable);
+
+  if (!user_dir.empty()) {
+    paths.user_data_root = user_dir;
+  } else if (portable) {
+    paths.user_data_root = exe_dir / "userdata";
+    if (!std::filesystem::exists(paths.user_data_root, ec)) {
+      CopyToPortable(default_user_dir, local_cache_dir, paths.user_data_root);
+    }
+  }
+
+  if (!cache_dir.empty()) {
+    paths.cache_root = cache_dir;
+  } else if (portable || !user_dir.empty() || local_cache_dir.empty()) {
+    paths.cache_root = paths.user_data_root / "cache";
+  } else {
+    MoveCache(default_user_dir / "cache", local_cache_dir);
+    paths.cache_root = local_cache_dir;
+  }
+}
 
 void ResolveGamePath(rex::PathConfig& paths, const std::filesystem::path& exe_dir) {
   if (!paths.game_data_root.empty()) {

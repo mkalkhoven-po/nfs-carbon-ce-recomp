@@ -25,10 +25,12 @@ you own.
 - Two graphics profiles:
   - **Original** (default): 1280×720, the console's 30 fps, accurate EDRAM emulation,
     nothing added. Meant to look exactly like the Xbox 360.
-  - **Remix**: 2560×1440 internal resolution, 16× anisotropic filtering, AMD CAS
-    sharpening, 120 fps.
-- Widescreen and ultrawide (21:9, 32:9 or any ratio wider than 16:9): more view to the
-  sides, HUD at the screen edges, videos and loading screens kept at 16:9.
+  - **Remix**: internal resolution and frame rate that follow your monitor (1440p on 1080p
+    and 1440p screens, 4K on 4K screens; up to 165 fps), 16× anisotropic filtering, AMD CAS
+    sharpening.
+- Widescreen and ultrawide, by default matching your monitor (21:9, 32:9 or any ratio wider
+  than 16:9): more view to the sides, HUD at the screen edges, videos and loading screens kept
+  at 16:9.
 - Controller and keyboard at the same time.
 - "PC SETTINGS" and "EXIT TO DESKTOP" in the main menu.
 
@@ -39,6 +41,8 @@ you own.
   little, Remix at 120 fps wants a recent mid-range card or better.
 - The [Microsoft Visual C++ Redistributable 2015–2022 (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 - Your Collector's Edition disc image (about 7.3 GB).
+- A folder you can write to: not `Program Files`, because settings and logs go next to
+  `nfsc.exe`.
 
 ## Installing and starting
 
@@ -54,7 +58,13 @@ you own.
    next to `nfsc.exe`, or start with `--game_data_root="path to the iso or folder"`.
 
 "Cannot connect to Xbox Live!" at startup is expected. Savegames are stored in
-`Documents\nfsc`.
+`Documents\nfsc`, the shader cache in `%LOCALAPPDATA%\nfsc\cache`.
+
+**Portable mode:** choose *Save location* > *Next to nfsc.exe* in PC SETTINGS (Advanced), or put
+`portable = true` in `nfsc.toml`. Savegames and shader cache then live in a `userdata` folder
+next to `nfsc.exe`, so the whole folder can move to another PC; with a `game` folder or `.iso`
+next to it, you don't have to choose anything there. The first time, your savegames and cache
+are copied there; the originals stay where they are and are not updated any more.
 
 ## Controls
 
@@ -77,8 +87,8 @@ An Xbox controller and the keyboard work at the same time.
 
 The main ones are in **PC SETTINGS** (main menu or `F1`): graphics profile, frame rate limit,
 aspect ratio, fullscreen or window, and under Advanced the resolution, sharpening, texture
-filtering and graphics API. Use a controller (A select, B back), the keyboard (WASD or arrows,
-`Space`, `Backspace`) or the mouse. "Profile (...)" means the graphics profile's value.
+filtering, graphics API and save location. Use a controller (A select, B back), the keyboard (WASD or arrows,
+`Space`, `Backspace`) or the mouse. "Profile: ..." means the graphics profile's value.
 **Apply** saves to `nfsc.toml` next to `nfsc.exe`; settings marked with `*` restart the game.
 
 Every setting can also be set in the advanced settings window (`F4`), in `nfsc.toml`, or on the
@@ -87,11 +97,13 @@ command line (`--name=value`). Settings you change yourself always win over the 
 | Setting | Values | |
 |---|---|---|
 | `profile` | `original`, `remix` | Graphics profile (restart) |
-| `aspect_ratio` | `16:9`, `21:9`, `32:9`, `W:H` | Render aspect ratio (restart) |
-| `guest_vblank_rate` | `30`, `60`, `120`, `240` | Frame rate cap (changes right away) |
+| `aspect_ratio` | `auto`, `16:9`, `21:9`, `32:9`, `W:H` | Render aspect ratio (restart) |
+| `frame_rate_limit` | `monitor`, `30`, `60`, `120`, `240` | Frame rate limit (changes right away) |
 | `draw_resolution_scale_x` / `_y` | `1`, `2`, `3` | Internal resolution: 720p, 1440p, 4K |
 | `fullscreen` | `true`, `false` | |
 | `gpu_backend` | `vulkan`, `d3d12` | (restart) |
+| `portable` | `true`, `false` | Savegames and shader cache next to `nfsc.exe` (restart) |
+| `cache_root` | path | Shader cache folder (restart) |
 
 Example `nfsc.toml` for an ultrawide monitor:
 

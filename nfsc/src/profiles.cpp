@@ -3,10 +3,15 @@
 #include "profiles.h"
 
 #include <array>
+#include <cstdlib>
 #include <string_view>
+
+#include <fmt/format.h>
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
+
+#include "display.h"
 
 REXCVAR_DEFINE_STRING(profile, "original", "NFSC",
                       "Graphics profile: original (faithful to the Xbox 360) or remix "
@@ -14,6 +19,11 @@ REXCVAR_DEFINE_STRING(profile, "original", "NFSC",
                       "yourself always override the profile.")
     .allowed({"original", "remix"})
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+
+REXCVAR_DEFINE_STRING(frame_rate_limit, "30", "NFSC",
+                      "Frame rate limit: a number, or monitor to follow the monitor's refresh "
+                      "rate. Without it the graphics profile decides. guest_vblank_rate, if you "
+                      "set it, goes first.");
 
 REXCVAR_DEFINE_STRING(gpu_backend, "vulkan", "NFSC",
                       "GPU backend for the xenos plugin: vulkan, d3d12 or any")
@@ -34,16 +44,16 @@ struct ProfileValue {
 // shader interlock (Vulkan) or rasterizer ordered views (D3D12), the game's own
 // texture filtering, native 720p with the game's 2x MSAA.
 // "remix": host render targets (fbo / rtv) instead of the interlocked EDRAM
-// path, rendered at 2x (2560x1440) with 16x anisotropic filtering. The
-// interlocked path keeps an RTX 5080 at 94-97% in races at 60 fps; host render
+// path, rendered at the scale that covers the monitor ("auto": 2x on 1080p and
+// 1440p, 3x on 4K) with 16x anisotropic filtering. The interlocked path keeps an RTX 5080 at 94-97% in races at 60 fps; host render
 // targets need ~68% and looked identical in side-by-side captures of the menu
 // and a race start (high-speed effects not compared yet).
 constexpr std::array kProfileValues = {
     ProfileValue{"render_target_path_vulkan", "fsi", "fbo"},
     ProfileValue{"render_target_path_d3d12", "rov", "rtv"},
     ProfileValue{"anisotropic_override", "-1", "5"},
-    ProfileValue{"draw_resolution_scale_x", "1", "2"},
-    ProfileValue{"draw_resolution_scale_y", "1", "2"},
+    ProfileValue{"draw_resolution_scale_x", "1", "auto"},
+    ProfileValue{"draw_resolution_scale_y", "1", "auto"},
     ProfileValue{"native_2x_msaa", "true", "true"},
     ProfileValue{"swap_post_effect", "none", "none"},
     // AMD CAS sharpening when presenting (needs the SDK built with FidelityFX).
@@ -51,9 +61,10 @@ constexpr std::array kProfileValues = {
     ProfileValue{"present_effect", "bilinear", "cas"},
     // The game presents on every vblank and times its simulation by the clock,
     // so the vblank rate is the frame cap: 30 fps like the Xbox 360 (which never
-    // reached 60), or 120 fps (Remix races average ~105-110 on an RTX 5080 at
-    // ~50% GPU). Race timers run in real time at 30, 60, 120 and 240.
-    ProfileValue{"guest_vblank_rate", "30", "120"},
+    // reached 60), or the monitor's rate, because a limit the monitor can't divide
+    // shows some frames longer than others (120 fps on 144 Hz repeats every fifth).
+    // Race timers run in real time at 30, 60, 120 and 240.
+    ProfileValue{"frame_rate_limit", "30", "monitor"},
     // The SDK forgets every CPU-uploaded page at the end of each frame by
     // default (a workaround for other games), so all vertex data used in a frame
     // is uploaded again in the next. Carbon doesn't need it; off is ~3% faster.
@@ -83,10 +94,22 @@ std::string GpuBackend() {
 std::string ProfileDefault(std::string_view profile, std::string_view cvar) {
   for (const auto& value : kProfileValues) {
     if (value.cvar == cvar) {
-      return std::string(profile == "remix" ? value.remix : value.original);
+      const std::string_view chosen = profile == "remix" ? value.remix : value.original;
+      return chosen == "auto" ? std::to_string(MonitorResolutionScale()) : std::string(chosen);
     }
   }
   return {};
+}
+
+double FrameRateLimit() {
+  const std::string& limit = REXCVAR_GET(frame_rate_limit);
+  return limit == "monitor" ? MonitorFrameRate() : std::strtod(limit.c_str(), nullptr);
+}
+
+void ApplyFrameRateLimit() {
+  if (const double rate = FrameRateLimit(); rate > 0.0) {
+    rex::cvar::SetFlagByName("guest_vblank_rate", fmt::format("{}", rate));
+  }
 }
 
 bool SetCvarDefault(std::string_view name, std::string_view value) {
@@ -107,9 +130,11 @@ bool SetCvarDefault(std::string_view name, std::string_view value) {
 }
 
 void ApplyProfile() {
-  const bool remix = ActiveProfile() == "remix";
   for (const auto& value : kProfileValues) {
-    SetCvarDefault(value.cvar, remix ? value.remix : value.original);
+    SetCvarDefault(value.cvar, ProfileDefault(ActiveProfile(), value.cvar));
+  }
+  if (const double rate = FrameRateLimit(); rate > 0.0) {
+    SetCvarDefault("guest_vblank_rate", fmt::format("{}", rate));
   }
   REXLOG_INFO("nfsc: graphics profile '{}', GPU backend '{}'", ActiveProfile(), GpuBackend());
 }

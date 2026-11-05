@@ -14,6 +14,8 @@ include(generated/rexglue.cmake)
 set(NFSC_SOURCES
     src/main.cpp
     src/main_menu.cpp
+    src/crash_report.cpp
+    src/display.cpp
     src/framerate.cpp
     src/game_path.cpp
     src/profiles.cpp
@@ -31,9 +33,10 @@ rexglue_setup_target(nfsc GPU_PLUGINS xenos)
 
 target_compile_definitions(nfsc PRIVATE NFSC_VERSION="${PROJECT_VERSION}")
 
-# File dialog for choosing the disc image or game folder on the first start.
+# File dialog for choosing the disc image or game folder on the first start,
+# crash dumps, monitor information.
 if(WIN32)
-    target_link_libraries(nfsc PRIVATE comdlg32)
+    target_link_libraries(nfsc PRIVATE comdlg32 dbghelp user32)
 endif()
 
 # FidelityFX (CAS/FSR presentation effects) is a runtime DLL of the SDK. The SDK

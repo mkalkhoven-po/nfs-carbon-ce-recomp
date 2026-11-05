@@ -221,6 +221,35 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       de Advanced-balk op Close. Niet getest: een echte controller (zelfde hook-pad als het
       toetsenbord via mnk).
 
+- [x] **Pakket 1 uit de code-analyse van 5-11** (klaar 5-11).
+      - *Frame pacing:* de fps-limiet is een vrijlopende timer, de present mailbox. Op 144 Hz
+        toont 120 fps elk vijfde beeld dubbel en duurt een beeld bij 30 fps afwisselend 4 en 5
+        refreshes; op onze 240 Hz niet te zien. Nieuwe `frame_rate_limit` (`monitor` of een
+        getal): Remix staat op `monitor`, met de exacte verversing via `QueryDisplayConfig` (een
+        hele deling boven 165 Hz, dus 240 → 120). Een eigen `guest_vblank_rate` gaat nog steeds
+        voor en verdwijnt zodra je de limiet in PC SETTINGS wijzigt.
+      - *Volgt het scherm:* `aspect_ratio` staat standaard op `auto`, ook bij Original (op
+        16:9-schermen verandert er niets); Remix kiest zijn resolutieschaal (1x-3x) op de
+        schermhoogte.
+      - *Portable (issue #1):* `portable = true` of Save location in PC SETTINGS zet alles in
+        `userdata` naast de exe en kopieert de eerste keer savegames en cache mee. De SDK leest
+        de paden vóór `nfsc.toml`; `ConfigureDataPaths` laadt de config daarom eerder, zodat ook
+        `cache_root` en `user_data_root` daar werken. De shadercache verhuist standaard van
+        Documenten (vaak OneDrive) naar `%LOCALAPPDATA%\nfsc\cache`; een bestaande cache gaat
+        mee. De haperingen uit issue #1 komen waarschijnlijk niet van de schijf (wegschrijven
+        loopt op een eigen thread) maar van nieuwe shaders; niet gemeten.
+      - *Crashrapport:* `crash_report.cpp` schrijft bij een onafgehandelde exceptie of abort een
+        dump (`MiniDumpNormal`: stacks en modules, geen guest-geheugen) naar `logs` en toont een
+        melding. `--test_crash=1` (geheugenfout) of `2` (abort) crasht expres. `__fastfail` is niet op te vangen.
+      - *PC SETTINGS:* mislukt opslaan blijft nu in beeld staan met een melding, zonder herstart.
+      Getest (toetsenbord, 2560x1440, 239,97 Hz): monitor exact herkend, cache verhuisd (153
+      pipelines geladen), Remix kiest 2x en 120 fps (240/2), `guest_vblank_rate = 60` blijft werken
+      en verdwijnt bij wijzigen, live 30 en terug naar Profile, portable aan via het venster
+      (herstart, savegame en cache gekopieerd, 234 pipelines geladen), crash en abort (dump van
+      ~265 KB, melding, log), alleen-lezen `nfsc.toml` (melding, geen herstart). Niet getest: een
+      echte 144 Hz- of ultrawide-monitor (het effect op frame pacing en `aspect_ratio = auto` buiten
+      16:9), meerdere monitoren, `__fastfail`, een echte controller.
+
 ## Release v0.75 (31-10)
 
 - Eerste publieke testversie, zonder gamebestanden: spelers kiezen bij de eerste start hun eigen

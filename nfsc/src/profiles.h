@@ -19,6 +19,12 @@ bool SetCvarDefault(std::string_view name, std::string_view value);
 // The value a profile gives a cvar, or "" if the profiles don't cover it.
 std::string ProfileDefault(std::string_view profile, std::string_view cvar);
 
+// The frame rate from frame_rate_limit, or 0 if that isn't a valid limit.
+double FrameRateLimit();
+
+// Applies frame_rate_limit to the running game.
+void ApplyFrameRateLimit();
+
 // Name of the active profile ("original" or "remix").
 std::string ActiveProfile();
 

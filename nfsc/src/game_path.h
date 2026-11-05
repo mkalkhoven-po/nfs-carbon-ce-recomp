@@ -13,6 +13,11 @@ class Runtime;
 
 namespace nfsc {
 
+// Decides where savegames and the shader cache go: portable mode, user_data_root
+// and cache_root (also from nfsc.toml), otherwise Documents\nfsc and
+// %LOCALAPPDATA%\nfsc\cache. Call before ResolveGamePath.
+void ConfigureDataPaths(rex::PathConfig& paths, const std::filesystem::path& exe_dir);
+
 // Sets paths.game_data_root when it wasn't configured (command line, nfsc.toml):
 // the path remembered from an earlier start, a "game" folder or a single .iso next
 // to the executable, or a disc image / default.xex chosen in a file dialog. A path

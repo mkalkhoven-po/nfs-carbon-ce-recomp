@@ -35,6 +35,7 @@
 #include <shellapi.h>
 #endif
 
+#include "display.h"
 #include "profiles.h"
 
 REX_EXTERN(__imp__sub_82941FE8);  // XInputGetState wrapper
@@ -114,6 +115,8 @@ bool SameValue(std::string_view a, std::string_view b) {
 }
 
 std::string FormatFps(std::string_view value) {
+  if (value == "monitor")
+    return fmt::format("Monitor ({:.0f} fps)", nfsc::MonitorFrameRate());
   return fmt::format("{:g} fps", std::strtod(std::string(value).c_str(), nullptr));
 }
 
@@ -156,6 +159,7 @@ struct Setting {
   bool from_profile;  // "" means the graphics profile's value
   std::string (*format)(std::string_view value);
   std::vector<Choice> choices;
+  const char* replaces = nullptr;  // older setting for the same thing; goes when this changes
 };
 
 constexpr size_t kProfileSetting = 0;
@@ -164,11 +168,16 @@ std::vector<Setting> BuildSettings() {
   std::vector<Setting> settings = {
       {"Graphics profile", {"profile"}, true, false, false, nullptr,
        {{"", "Original: 720p, 30 fps, like the Xbox 360"},
-        {"remix", "Remix: 1440p, 120 fps, sharper"}}},
-      {"Frame rate limit", {"guest_vblank_rate"}, false, false, true, FormatFps,
-       {{"30", ""}, {"60", ""}, {"120", ""}, {"240", ""}}},
+        {"remix", "Remix: sharper, smoother, follows your monitor"}}},
+      {"Frame rate limit", {"frame_rate_limit"}, false, false, true, FormatFps,
+       {{"monitor", ""}, {"30", ""}, {"60", ""}, {"120", ""}, {"240", ""}},
+       "guest_vblank_rate"},
       {"Aspect ratio", {"aspect_ratio"}, true, false, false, nullptr,
-       {{"", "16:9 (the game's own)"}, {"21:9", "21:9"}, {"32:9", "32:9"}}},
+       {{"", fmt::format("Monitor ({}x{})", nfsc::CurrentDisplay().width,
+                         nfsc::CurrentDisplay().height)},
+        {"16:9", "16:9 (the game's own)"},
+        {"21:9", "21:9"},
+        {"32:9", "32:9"}}},
       {"Display", {"fullscreen"}, false, false, false, nullptr,
        {{"", "Fullscreen"}, {"false", "Window"}}},
       {"Resolution", {"draw_resolution_scale_x", "draw_resolution_scale_y"}, true, true, true,
@@ -179,6 +188,8 @@ std::vector<Setting> BuildSettings() {
        {{"-1", ""}, {"3", ""}, {"4", ""}, {"5", ""}}},
       {"Graphics API", {"gpu_backend"}, true, true, false, nullptr,
        {{"", "Vulkan"}, {"d3d12", "Direct3D 12"}}},
+      {"Save location", {"portable"}, true, true, false, nullptr,
+       {{"", "Documents"}, {"true", "Next to nfsc.exe (portable)"}}},
   };
   // Leave out what this build doesn't have (CAS needs the SDK built with
   // FidelityFX).
@@ -209,6 +220,14 @@ std::vector<Setting> BuildSettings() {
 // of the choices has is added as one.
 std::string CurrentChoice(Setting& setting) {
   const auto* entry = rex::cvar::GetFlagInfo(setting.cvars[0]);
+  if (entry && entry->source == rex::cvar::Source::kDefault && setting.replaces) {
+    // Applying a frame rate limit sets the older setting too, as kRuntime; only
+    // a value from the player's config or command line counts.
+    const auto* older = rex::cvar::GetFlagInfo(setting.replaces);
+    if (older && older->source != rex::cvar::Source::kRuntime) {
+      entry = older;
+    }
+  }
   if (!entry || entry->source == rex::cvar::Source::kDefault)
     return "";
   const std::string value = entry->getter();
@@ -225,7 +244,7 @@ std::string CurrentChoice(Setting& setting) {
 std::string ChoiceLabel(const Setting& setting, const std::string& value,
                         std::string_view profile) {
   if (value.empty() && setting.from_profile) {
-    return fmt::format("Profile ({})",
+    return fmt::format("Profile: {}",
                        setting.format(nfsc::ProfileDefault(profile, setting.cvars[0])));
   }
   for (const auto& choice : setting.choices) {
@@ -377,13 +396,14 @@ class SettingsWindow final : public rex::ui::ImGuiDialog {
 
   void FeedPad(ImGuiIO& io);
   void DrawSetting(size_t index, float label_width, float combo_width);
-  void Apply();
+  bool Apply();
   bool NeedsRestart() const;
 
   std::vector<Setting> settings_;
   std::vector<std::string> initial_;
   std::vector<std::string> pending_;
   bool closing_ = false;
+  bool save_failed_ = false;
   bool first_frame_ = true;
   bool had_gamepad_nav_ = false;
   // Buttons held when the window opened (the one that opened it) are ignored
@@ -433,7 +453,8 @@ bool SettingsWindow::NeedsRestart() const {
   return false;
 }
 
-void SettingsWindow::Apply() {
+// Returns whether the settings were saved.
+bool SettingsWindow::Apply() {
   std::vector<std::pair<std::string, std::string>> changes;
   for (size_t i = 0; i < settings_.size(); i++) {
     if (pending_[i] == initial_[i])
@@ -445,12 +466,22 @@ void SettingsWindow::Apply() {
         ApplyLive(cvar, pending_[i]);
       }
     }
+    if (settings_[i].replaces) {
+      changes.emplace_back(settings_[i].replaces, "");
+      g_changed.insert(settings_[i].replaces);
+      nfsc::ApplyFrameRateLimit();
+    }
+  }
+  save_failed_ = !SaveToConfig(changes);
+  if (save_failed_) {
+    return false;
   }
   const bool restart = NeedsRestart();
   initial_ = pending_;
-  if (SaveToConfig(changes) && restart && g_restart_handler) {
+  if (restart && g_restart_handler) {
     g_restart_handler();
   }
+  return true;
 }
 
 void SettingsWindow::DrawSetting(size_t index, float label_width, float combo_width) {
@@ -543,6 +574,10 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
     }
 
     ImGui::Separator();
+    if (save_failed_) {
+      ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f),
+                         "Could not save nfsc.toml. Move the game to a folder you can write to.");
+    }
     ImGui::TextDisabled("* Takes effect after a restart.");
     ImGui::Spacing();
     // Apply is the wider button, so moving down from the full-width Advanced
@@ -551,8 +586,7 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
     ImGui::BeginDisabled(pending_ == initial_);
     if (ImGui::Button(NeedsRestart() ? "Apply and restart" : "Apply",
                       ImVec2(buttons_width * 0.65f, 0.0f))) {
-      Apply();
-      closing_ = true;
+      closing_ = Apply();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();

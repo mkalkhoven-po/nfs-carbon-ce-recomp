@@ -21,12 +21,14 @@
 #include <rex/kernel/xboxkrnl/video.h>
 #include <rex/logging.h>
 
+#include "display.h"
 #include "profiles.h"
 #include "widescreen.h"
 
-REXCVAR_DEFINE_STRING(aspect_ratio, "16:9", "NFSC",
-                      "Screen aspect ratio for the game's 3D view and HUD, e.g. 16:9 (the game's "
-                      "own), 21:9 or 32:9. Wider ratios render at 720 * W/H x 720.")
+REXCVAR_DEFINE_STRING(aspect_ratio, "auto", "NFSC",
+                      "Screen aspect ratio for the game's 3D view and HUD: auto (the monitor's), "
+                      "16:9 (the game's own), 21:9, 32:9 or any W:H. Wider ratios render at "
+                      "720 * W/H x 720.")
     .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REXCVAR_DEFINE_INT32(render_width, 0, "NFSC",
@@ -195,7 +197,10 @@ void UpdatePresentAspect(uint8_t* base) {
 void ApplyWidescreen() {
   unsigned aspect_x = 16, aspect_y = 9;
   const std::string& aspect = REXCVAR_GET(aspect_ratio);
-  if (std::sscanf(aspect.c_str(), "%u:%u", &aspect_x, &aspect_y) != 2 || !aspect_x || !aspect_y) {
+  if (aspect == "auto") {
+    aspect_x = CurrentDisplay().width;
+    aspect_y = CurrentDisplay().height;
+  } else if (std::sscanf(aspect.c_str(), "%u:%u", &aspect_x, &aspect_y) != 2 || !aspect_x || !aspect_y) {
     REXLOG_WARN("nfsc: invalid aspect_ratio '{}', using 16:9", aspect);
     aspect_x = 16;
     aspect_y = 9;

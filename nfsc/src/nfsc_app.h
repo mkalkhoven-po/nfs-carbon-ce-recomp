@@ -13,6 +13,7 @@
 #include <rex/system/gpu_plugin.h>
 #include <rex/ui/keybinds.h>
 
+#include "crash_report.h"
 #include "game_path.h"
 #include "main_menu.h"
 #include "profiles.h"
@@ -73,8 +74,14 @@ class NfscApp : public rex::ReXApp {
     });
   }
 
+  // Next to the logs, as soon as those are open.
+  void OnPostInitLogging() override {
+    nfsc::InstallCrashReport(rex::filesystem::GetExecutableFolder() / "logs");
+  }
+
   // After the SDK has set its own title (in SetupPresentation).
   void OnPreLaunchModule() override {
+    nfsc::TestCrash();
     window()->SetTitle(fmt::format(
         "Need for Speed: Carbon Collector's Edition - Recompiled v{} ({})", NFSC_VERSION,
         nfsc::ActiveProfile() == "remix" ? "Remix" : "Original"));
@@ -85,6 +92,7 @@ class NfscApp : public rex::ReXApp {
   void OnConfigurePaths(rex::PathConfig& paths) override {
     nfsc::WaitForPreviousInstance();
     nfsc::SetSettingsConfigPath(paths.config_path);
+    nfsc::ConfigureDataPaths(paths, rex::filesystem::GetExecutableFolder());
     nfsc::ResolveGamePath(paths, rex::filesystem::GetExecutableFolder());
     if (paths.game_data_root.empty()) {
       std::quick_exit(0);  // No disc image or folder chosen.
