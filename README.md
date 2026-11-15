@@ -5,7 +5,7 @@ static recompilation with the [ReXGlue SDK](https://github.com/rexglue/rexglue-s
 game's PowerPC code is translated to C++ ahead of time and compiled for x86-64; graphics run
 on Vulkan (or Direct3D 12).
 
-**Version 0.751 – public test build.** The game is playable from start to finish as far as we
+**Version 0.752 – public test build.** The game is playable from start to finish as far as we
 know, but only a part of the Career has been tested. Please report what you find (see
 [Reporting problems](#reporting-problems)).
 
@@ -130,9 +130,10 @@ aspect_ratio = "21:9"
 
 ## Reporting problems
 
-Open an issue on GitHub with what you did, what happened, your GPU and the profile and
-settings you used. The log files are in the `logs` folder next to `nfsc.exe`; attach the one
-from the session where it happened.
+Open an issue on GitHub with what you did, what happened, your GPU, your monitor's refresh
+rate and the profile and settings you used. The log files are in the `logs` folder next to
+`nfsc.exe`; attach the one from the session where it happened. After a crash the game also
+writes a dump file (`.dmp`) there and tells you where it is; attach that too.
 
 **Privacy:** nothing is ever sent anywhere. The game only writes log files on your own PC;
 you decide whether to share one. `--log_fps=true` adds the frame rate to the log once a second.
@@ -165,7 +166,7 @@ cmake --preset win-amd64-release
 cmake --build --preset win-amd64-release
 ```
 
-`tools/package-release.ps1` puts a build together as a release folder.
+`python tools/package-release.py` puts a build together as a release folder and zip.
 
 Development notes (in Dutch): [docs/DEVELOPMENT.nl.md](docs/DEVELOPMENT.nl.md) and
 [ROADMAP.md](ROADMAP.md).

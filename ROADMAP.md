@@ -292,6 +292,12 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   rooktest met de exe uit het pakket en een lege gebruikersmap: titel "v0.751", F1 opent het
   venster. Release-notes in `docs/release-notes-v0.751.md`.
 
+## Release v0.752 (15-11)
+
+- Pakket 1 en 2 (zie Wensen), nog op SDK v0.10; de overstap naar v0.11.0 volgt apart. Gericht
+  op issue #1 (portable shadercache) en issue #2 (schokkerig bij 120 fps: de vaste 120 van Remix
+  past niet in elk scherm). Het pakketscript is nu Python (`tools/package-release.py`).
+
 ## Onderzocht
 
 - **"Vlekjes" op het eindscherm** (29-10, opgelost 30-10): geen renderfout maar een fout in onze
@@ -307,6 +313,15 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   basisadres 0, afmeting 0). Xenia's standaard (slot negeren) geeft geen zichtbare fout;
   `gpu_allow_invalid_fetch_constants=true` onderdrukt de waarschuwingen maar zou geheugen op
   adres 0 als texture lezen. Standaard gelaten; onschuldig.
+
+## Backlog
+
+- [ ] **Controllers en splitscreen testen** (op de backlog gezet 15-11). Xbox- en PS5-controller
+      tegelijk (SDL: eerst verbonden = speler 1, het toetsenbord hoort bij speler 1). Splitscreen
+      (Quick Race, Game Mode "Split Screen") vraagt START op de tweede controller; dat moet Martin
+      indrukken. Nalopen: sturen, trillen, knoppen, widescreen en HUD met twee beelden, fps.
+      Bekend: `pad.cpp` blokkeert alleen speler 1 tijdens PC SETTINGS en op de achtergrond, en
+      PC SETTINGS luistert alleen naar speler 1.
 
 ## Open problemen
 
