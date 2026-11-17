@@ -299,7 +299,11 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   op issue #1 (portable shadercache) en issue #2 (schokkerig bij 120 fps: de vaste 120 van Remix
   past niet in elk scherm). Het pakketscript is nu Python (`tools/package-release.py`).
 
-## SDK v0.11.0 (17-11, nog niet uitgebracht)
+## Release v0.76: SDK v0.11.0 (17-11)
+
+- Uitgebracht als v0.76 (pre-release), met release-notes in `docs/release-notes-v0.76.md`.
+  Rooktest met de zip in een lege map (portable): titel v0.76, oude shadercache één keer
+  opgeruimd, hoofdmenu, geen foutregels.
 
 - Overgestapt van ReXGlue SDK v0.10 naar v0.11.0 (1001 commits: nieuwe app-laag
   `rex::app::TitleApp`, instellingenregister met scopes en lagen, ~20 module-DLL's, Direct3D 12
