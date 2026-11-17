@@ -3,7 +3,7 @@
 // keyboard-to-controller mapping (mnk_mode).
 //
 // ReadPad polls the input system itself, because the game stops reading the pad
-// while it is paused by the system UI notification. That takes SDK patch 0010.
+// while it is paused by the system UI notification.
 
 #include "pad.h"
 
@@ -11,22 +11,19 @@
 #include <chrono>
 #include <cstring>
 
-#include <rex/cvar.h>
-#include <rex/hook.h>
-#include <rex/input/input.h>
-#include <rex/input/input_system.h>
-#include <rex/logging.h>
-#include <rex/runtime.h>
-#include <rex/system/kernel_state.h>
+#include <rex/hid/input_system.h>
+#include <rex/hid/pad.h>
+#include <rex/ppc/hook.h>
 
-REXCVAR_DEFINE_BOOL(skip_intro, false, "NFSC",
-                    "Skip the logos and intro videos at startup, up to the main menu");
+#include "settings.h"
 
 REX_EXTERN(__imp__sub_82941FE8);  // XInputGetState wrapper
 
 namespace {
 
-using namespace rex::input;
+using namespace rex::hid;
+
+IInputSystem* g_input = nullptr;
 
 constexpr int kStickThreshold = 16384;
 // Start is down for this many reads, then up for as many.
@@ -52,13 +49,13 @@ void StoreU16(uint8_t* p, uint16_t value) {
 uint32_t StickToDpad(int16_t x, int16_t y) {
   uint32_t dpad = 0;
   if (y > kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_UP;
+    dpad |= kPadDPadUp;
   if (y < -kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_DOWN;
+    dpad |= kPadDPadDown;
   if (x < -kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_LEFT;
+    dpad |= kPadDPadLeft;
   if (x > kStickThreshold)
-    dpad |= X_INPUT_GAMEPAD_DPAD_RIGHT;
+    dpad |= kPadDPadRight;
   return dpad;
 }
 
@@ -79,7 +76,7 @@ void PulseStart(uint8_t* state) {
     g_intro_skip = false;
     return;
   }
-  StoreU16(buttons, down ? uint16_t(X_INPUT_GAMEPAD_START) : uint16_t(0));
+  StoreU16(buttons, down ? uint16_t(kPadStart) : uint16_t(0));
   // The packet number says that the state changed.
   state[3] = uint8_t(state[3] + reads);
 }
@@ -121,14 +118,19 @@ void SetPadCaptured(bool captured) {
   g_captured = captured;
 }
 
+void SetInputSystem(rex::hid::IInputSystem* input) {
+  g_input = input;
+}
+
 uint32_t ReadPad() {
-  auto* input = static_cast<rex::input::InputSystem*>(
-      REX_KERNEL_STATE()->emulator()->input_system());
-  rex::input::X_INPUT_STATE state = {};
-  if (input->GetState(0, &state) != 0) {
+  if (!g_input) {
     return 0;
   }
-  const auto& pad = state.gamepad;
+  auto reading = g_input->GetState(0);
+  if (!reading) {
+    return 0;
+  }
+  const PadState& pad = reading->state;
   return FoldSticks(pad.buttons, pad.thumb_lx, pad.thumb_ly, pad.thumb_rx, pad.thumb_ry);
 }
 
@@ -140,7 +142,7 @@ void SetPadBlockedInBackground(bool blocked) {
 }
 
 void StartIntroSkip() {
-  if (REXCVAR_GET(skip_intro)) {
+  if (Settings().skip_intro.Get()) {
     g_intro_skip_start = std::chrono::steady_clock::now();
     g_intro_skip = true;
   }

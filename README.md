@@ -5,7 +5,7 @@ static recompilation with the [ReXGlue SDK](https://github.com/rexglue/rexglue-s
 game's PowerPC code is translated to C++ ahead of time and compiled for x86-64; graphics run
 on Vulkan (or Direct3D 12).
 
-**Version 0.752 – public test build.** The game is playable from start to finish as far as we
+**Version 0.76 – public test build.** The game is playable from start to finish as far as we
 know, but only a part of the Career has been tested. Please report what you find (see
 [Reporting problems](#reporting-problems)).
 
@@ -26,8 +26,7 @@ you own.
   - **Original** (default): 1280×720, the console's 30 fps, accurate EDRAM emulation,
     nothing added. Meant to look exactly like the Xbox 360.
   - **Remix**: internal resolution and frame rate that follow your monitor (1440p on 1080p
-    and 1440p screens, 4K on 4K screens; up to 165 fps), 16× anisotropic filtering, AMD CAS
-    sharpening.
+    and 1440p screens, 4K on 4K screens; up to 165 fps) and 16× anisotropic filtering.
 - Widescreen and ultrawide, by default matching your monitor (21:9, 32:9 or any ratio wider
   than 16:9): more view to the sides, HUD at the screen edges, videos and loading screens kept
   at 16:9.
@@ -85,35 +84,40 @@ An Xbox controller and the keyboard work at the same time.
 | `F1` | PC settings (also in the main menu) |
 | `F4` | All settings, for advanced use |
 | `F3` | Performance overlay |
+| `` ` `` | Console, for advanced use |
 | `Alt+F4` | Quit (or EXIT TO DESKTOP in the main menu) |
 
 ## Settings
 
 The main ones are in **PC SETTINGS** (main menu or `F1`): graphics profile, frame rate limit,
 aspect ratio, fullscreen or window, the intro videos, keyboard controls, and under Advanced the
-resolution, sharpening, texture filtering, graphics API and save location. Use a controller (A select, B back), the keyboard (WASD or arrows,
+resolution, texture filtering, graphics API and save location. Use a controller (A select, B back), the keyboard (WASD or arrows,
 `Space`, `Backspace`) or the mouse. "Profile: ..." means the graphics profile's value.
 **Apply** saves to `nfsc.toml` next to `nfsc.exe`; settings marked with `*` restart the game.
 
 Every setting can also be set in the advanced settings window (`F4`), in `nfsc.toml`, or on the
 command line (`--name=value`). Settings you change yourself always win over the profile.
+Setting names have a scope, such as `nfsc.profile` or `gpu.vsync`; the names of earlier
+versions without a scope (`profile`, `fullscreen`, ...) still work.
 
 | Setting | Values | |
 |---|---|---|
-| `profile` | `original`, `remix` | Graphics profile (restart) |
-| `aspect_ratio` | `auto`, `16:9`, `21:9`, `32:9`, `W:H` | Render aspect ratio (restart) |
-| `frame_rate_limit` | `monitor`, `30`, `60`, `120`, `240` | Frame rate limit (changes right away) |
-| `draw_resolution_scale_x` / `_y` | `1`, `2`, `3` | Internal resolution: 720p, 1440p, 4K |
-| `fullscreen` | `true`, `false` | |
-| `gpu_backend` | `vulkan`, `d3d12` | (restart) |
-| `skip_intro` | `true`, `false` | Skip logos and videos up to the main menu |
-| `pause_in_background` | `true`, `false` | Pause a race and ignore the controller while in the background |
-| `portable` | `true`, `false` | Savegames and shader cache next to `nfsc.exe` (restart) |
-| `cache_root` | path | Shader cache folder (restart) |
+| `nfsc.profile` | `original`, `remix` | Graphics profile (restart) |
+| `nfsc.aspect_ratio` | `auto`, `16:9`, `21:9`, `32:9`, `W:H` | Render aspect ratio (restart) |
+| `nfsc.frame_rate_limit` | `monitor`, `30`, `60`, `120`, `240` | Frame rate limit (restart) |
+| `gpu.resolution_scale_x` / `_y` | `1`, `2`, `3` | Internal resolution: 720p, 1440p, 4K (restart) |
+| `ui.fullscreen` | `true`, `false` | |
+| `ui.monitor` | `1`, `2`, ... | Monitor to open on; `0` is the main one |
+| `gpu.driver` | `vulkan`, `d3d12` | Graphics API (restart) |
+| `nfsc.skip_intro` | `true`, `false` | Skip logos and videos up to the main menu |
+| `nfsc.pause_in_background` | `true`, `false` | Pause a race and ignore the controller while in the background |
+| `nfsc.portable` | `true`, `false` | Savegames and shader cache next to `nfsc.exe` (restart) |
+| `app.cache_root` | path | Shader cache folder (restart) |
 
 Example `nfsc.toml` for an ultrawide monitor:
 
 ```toml
+[nfsc]
 profile = "remix"
 aspect_ratio = "21:9"
 ```
@@ -136,7 +140,8 @@ rate and the profile and settings you used. The log files are in the `logs` fold
 writes a dump file (`.dmp`) there and tells you where it is; attach that too.
 
 **Privacy:** nothing is ever sent anywhere. The game only writes log files on your own PC;
-you decide whether to share one. `--log_fps=true` adds the frame rate to the log once a second.
+you decide whether to share one. `--nfsc.log_fps=true` adds the frame rate to the log once a
+second.
 
 ## Building from source
 
@@ -146,8 +151,9 @@ frame rate and the menu option (`nfsc/src/`), and our changes to the ReXGlue SDK
 during the build.
 
 Toolchain (Windows): LLVM/Clang 23, Visual Studio 2022 Build Tools (*Desktop development
-with C++*), CMake 4, Ninja, Git, Python 3.12 and the LunarG Vulkan SDK. Put
-`C:\Program Files\LLVM\bin` first in `PATH`.
+with C++*), CMake 4, Ninja, Git, Python 3.12 and the LunarG Vulkan SDK 1.4.313 or newer, with
+its *Vulkan Memory Allocator header* component. Put `C:\Program Files\LLVM\bin` first in
+`PATH`. The project uses ReXGlue SDK 0.11.0.
 
 ```bash
 # 1. Extract the disc
@@ -156,13 +162,13 @@ python tools/xdvdfs.py extract "path/to/your/disc.iso" game
 # 2. Get, patch and build the SDK (once)
 bash tools/setup-sdk.sh
 cd sdk/rexglue-sdk
-cmake --preset win-amd64 -DREXGLUE_USE_VULKAN=ON -DREXGLUE_ENABLE_FIDELITYFX=ON -DREXGLUE_FIDELITYFX_BACKEND=vk
-python ../../tools/fix-ffx-rc.py
-cmake --build --preset win-amd64-release --target install
+cmake --preset win-amd64 -DREXGLUE_BUILD_TESTS=OFF
+cmake --build out/build/win-amd64 --config Release --target install
 
-# 3. Build the game (the recompilation runs as part of the build)
+# 3. Build the game. The recompilation runs as part of the build; the first build stops
+#    after it, so run both commands once more.
 cd ../../nfsc
-cmake --preset win-amd64-release
+cmake --preset win-amd64
 cmake --build --preset win-amd64-release
 ```
 

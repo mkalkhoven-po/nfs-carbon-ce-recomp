@@ -1,39 +1,38 @@
-// nfsc - the in-game PC SETTINGS window: graphics profile, frame rate limit,
-// aspect ratio, display mode and a few advanced options, saved to nfsc.toml.
+// nfsc - the in-game PC SETTINGS window: graphics profile, frame rate limit, aspect ratio,
+// display mode, intro videos, keyboard controls and a few advanced options. Opened from the
+// main menu (PC SETTINGS) or with F1 (ui.bind.pc_settings). Apply saves the choices to
+// nfsc.toml; settings that need a restart restart the game.
 
 #pragma once
 
 #include <filesystem>
 #include <functional>
+#include <set>
+#include <string>
 
 namespace rex::ui {
-class ImGuiDrawer;
+class IUISystem;
 }
 
 namespace nfsc {
 
-// Where Apply saves the settings (nfsc.toml next to the executable).
+// The UI system the window opens in; set by the app once the window is open.
+void SetSettingsUI(rex::ui::IUISystem* ui);
+
+// The config file Apply writes to (app.config_file).
 void SetSettingsConfigPath(std::filesystem::path path);
 
-// Called on the UI thread when an applied setting needs a restart. The handler
-// calls StartNewInstance and closes the app.
+// Called after Apply saved a change that needs a restart.
 void SetRestartHandler(std::function<void()> handler);
 
-// Called on the UI thread when the window opens (true) and closes (false).
+// Called with true when the window opens and false when it closes.
 void SetPauseHandler(std::function<void(bool)> handler);
 
-// Opens the window, or closes it if it is open. UI thread only.
-void ToggleSettingsWindow(rex::ui::ImGuiDrawer* drawer);
-void OpenSettingsWindow(rex::ui::ImGuiDrawer* drawer);
+void OpenSettingsWindow();
+void ToggleSettingsWindow();
 
-// Starts nfsc.exe again, with the same command line minus the settings changed
-// in the window (those are in nfsc.toml now). The app exits with std::_Exit, so
-// this can't wait until then; instead the new process waits for this one in
-// WaitForPreviousInstance.
-void StartNewInstance();
-
-// In a process started by StartNewInstance: waits until the old one has exited,
-// so the two never use the same files. Call first thing at startup.
-void WaitForPreviousInstance();
+// Full names of the settings changed in the window this session, with their old names.
+// The restart leaves these off the command line, so that nfsc.toml decides.
+const std::set<std::string>& ChangedSettings();
 
 }  // namespace nfsc

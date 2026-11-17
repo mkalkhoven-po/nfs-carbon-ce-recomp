@@ -7,10 +7,14 @@
 
 namespace nfsc {
 
-// Writes crash dumps to folder (the logs folder).
+// Writes crash dumps to folder (the logs folder). Call before the SDK installs its crash
+// reporter (App::OnConfigure).
 void InstallCrashReport(std::filesystem::path folder);
 
-// Crashes on purpose if the test_crash cvar says so.
+// Also reports abort(). Call after the SDK installed its crash reporter (App::OnInit).
+void InstallAbortReport();
+
+// Crashes on purpose if nfsc.test_crash says so.
 void TestCrash();
 
 }  // namespace nfsc

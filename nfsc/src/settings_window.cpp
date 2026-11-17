@@ -1,48 +1,49 @@
 // nfsc - the in-game PC SETTINGS window (see settings_window.h).
 //
-// Controller and keyboard reach the window through pad.h; while it is open, the
-// game gets the same notification as when the Xbox guide opens and pauses a race.
+// Controller and keyboard reach the window through pad.h; while it is open, the game gets
+// the same notification as when the Xbox guide opens and pauses a race.
+//
+// A choice with an empty value means "not chosen": the setting then comes from the graphics
+// profile (the SDK's title layer) or its default. Apply writes chosen values at the runtime
+// layer and into nfsc.toml, and removes values set back to the profile.
 
 #include "settings_window.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
+#include <format>
 #include <fstream>
-#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-#include <fmt/format.h>
 #include <imgui.h>
 
-#include <rex/cvar.h>
-#include <rex/input/input.h>
-#include <rex/logging.h>
-#include <rex/ui/imgui_dialog.h>
-#include <rex/ui/keybinds.h>
+#include <rex/hid/pad.h>
+#include <rex/input_keys.h>
+#include <rex/logging/log_category.h>
+#include <rex/settings_registry.h>
+#include <rex/ui/ui_system.h>
 
 #if defined(_WIN32)
 #include <windows.h>
-#include <shellapi.h>
 #endif
 
 #include "display.h"
 #include "pad.h"
 #include "profiles.h"
+#include "settings.h"
 
 namespace {
 
-using namespace rex::input;
+using namespace rex::hid;
 
+rex::ui::IUISystem* g_ui = nullptr;
 std::filesystem::path g_config_path;
 std::function<void()> g_restart_handler;
 std::function<void(bool)> g_pause_handler;
-// Cvars changed in the window this session; the restart leaves them off the
-// command line so nfsc.toml decides.
 std::set<std::string> g_changed;
 
 bool SameValue(std::string_view a, std::string_view b) {
@@ -58,8 +59,8 @@ bool SameValue(std::string_view a, std::string_view b) {
 
 std::string FormatFps(std::string_view value) {
   if (value == "monitor")
-    return fmt::format("Monitor ({:.0f} fps)", nfsc::MonitorFrameRate());
-  return fmt::format("{:g} fps", std::strtod(std::string(value).c_str(), nullptr));
+    return std::format("Monitor ({:.0f} fps)", nfsc::MonitorFrameRate());
+  return std::format("{:g} fps", std::strtod(std::string(value).c_str(), nullptr));
 }
 
 std::string FormatScale(std::string_view value) {
@@ -69,19 +70,11 @@ std::string FormatScale(std::string_view value) {
     return "2x (1440p)";
   if (value == "3")
     return "3x (2160p)";
-  return fmt::format("{}x", value);
+  return std::format("{}x", value);
 }
 
 std::string FormatIntro(std::string_view value) {
   return value == "true" ? "Skip" : "Play";
-}
-
-std::string FormatEffect(std::string_view value) {
-  if (value == "bilinear")
-    return "Off";
-  if (value == "cas")
-    return "AMD CAS";
-  return std::string(value);
 }
 
 std::string FormatAnisotropic(std::string_view value) {
@@ -92,49 +85,70 @@ std::string FormatAnisotropic(std::string_view value) {
   return std::string(value);
 }
 
+std::string FormatDriver(std::string_view value) {
+  if (value == "vulkan")
+    return "Vulkan";
+  if (value == "d3d12")
+    return "Direct3D 12";
+  return std::string(value);
+}
+
 struct Choice {
-  std::string value;  // "" = not set: the profile's value or the cvar's default
+  std::string value;  // "" = not chosen: the profile's value or the default
   std::string label;  // empty: from Setting::format
 };
 
 struct Setting {
   const char* label;
-  std::vector<const char*> cvars;
-  bool restart;       // takes effect after a restart
+  std::vector<const char*> names;  // full setting names
+  bool restart;                    // takes effect after a restart
   bool advanced;
-  bool from_profile;  // "" means the graphics profile's value
+  bool from_profile;  // "" shows the graphics profile's value
   std::string (*format)(std::string_view value);
   std::vector<Choice> choices;
-  const char* replaces = nullptr;  // older setting for the same thing; goes when this changes
+  // A lower-level setting for the same thing, which a config may set instead (frame rate
+  // limit: ui.video_mode_refresh_rate). It goes when this one changes.
+  const char* replaces = nullptr;
 };
 
 constexpr size_t kProfileSetting = 0;
 
-// The keyboard's controller mapping (mnk_mode).
+// The keyboard's controller mapping (hid.mnk_mode).
 struct KeyBind {
   const char* label;
-  const char* cvar;
+  const char* name;
   std::string initial = {};
   std::string pending = {};
 };
 
 std::vector<KeyBind> BuildKeyBinds() {
   std::vector<KeyBind> binds = {
-      {"Steer left", "keybind_lstick_left"},     {"Steer right", "keybind_lstick_right"},
-      {"Up", "keybind_lstick_up"},               {"Down", "keybind_lstick_down"},
-      {"Throttle (RT)", "keybind_right_trigger"}, {"Brake (LT)", "keybind_left_trigger"},
-      {"A button", "keybind_a"},                 {"B button", "keybind_b"},
-      {"X button", "keybind_x"},                 {"Y button", "keybind_y"},
-      {"Left shoulder (LB)", "keybind_left_shoulder"},
-      {"Right shoulder (RB)", "keybind_right_shoulder"},
-      {"Start", "keybind_start"},                {"Back", "keybind_back"},
+      {"Steer left", "hid.keybind_lstick_left"},
+      {"Steer right", "hid.keybind_lstick_right"},
+      {"Up", "hid.keybind_lstick_up"},
+      {"Down", "hid.keybind_lstick_down"},
+      {"Throttle (RT)", "hid.keybind_right_trigger"},
+      {"Brake (LT)", "hid.keybind_left_trigger"},
+      {"A button", "hid.keybind_a"},
+      {"B button", "hid.keybind_b"},
+      {"X button", "hid.keybind_x"},
+      {"Y button", "hid.keybind_y"},
+      {"Left shoulder (LB)", "hid.keybind_left_shoulder"},
+      {"Right shoulder (RB)", "hid.keybind_right_shoulder"},
+      {"Start", "hid.keybind_start"},
+      {"Back", "hid.keybind_back"},
   };
-  std::erase_if(binds, [](const KeyBind& bind) { return !rex::cvar::GetFlagInfo(bind.cvar); });
+  std::erase_if(binds, [](const KeyBind& bind) { return !nfsc::FindSetting(bind.name); });
   for (auto& bind : binds) {
-    bind.initial = rex::cvar::GetFlagInfo(bind.cvar)->getter();
+    bind.initial = nfsc::SettingText(bind.name);
     bind.pending = bind.initial;
   }
   return binds;
+}
+
+std::string DefaultText(const char* name) {
+  const rex::SettingBase* setting = nfsc::FindSetting(name);
+  return setting ? setting->GetDefaultText() : std::string();
 }
 
 // The name of a key that is down, or "".
@@ -142,7 +156,7 @@ std::string PressedKey() {
 #if defined(_WIN32)
   for (int vk = 0x08; vk < 0xFF; ++vk) {
     if (GetAsyncKeyState(vk) & 0x8000) {
-      std::string name = rex::ui::VirtualKeyToString(static_cast<rex::ui::VirtualKey>(vk));
+      std::string name = rex::VirtualKeyToString(static_cast<rex::VirtualKey>(vk));
       if (!name.empty())
         return name;
     }
@@ -152,50 +166,35 @@ std::string PressedKey() {
 }
 
 std::vector<Setting> BuildSettings() {
+  const nfsc::DisplayMode& display = nfsc::CurrentDisplay();
   std::vector<Setting> settings = {
-      {"Graphics profile", {"profile"}, true, false, false, nullptr,
+      {"Graphics profile", {"nfsc.profile"}, true, false, false, nullptr,
        {{"", "Original: 720p, 30 fps, like the Xbox 360"},
         {"remix", "Remix: sharper, smoother, follows your monitor"}}},
-      {"Frame rate limit", {"frame_rate_limit"}, false, false, true, FormatFps,
+      {"Frame rate limit", {"nfsc.frame_rate_limit"}, true, false, true, FormatFps,
        {{"monitor", ""}, {"30", ""}, {"60", ""}, {"120", ""}, {"240", ""}},
-       "guest_vblank_rate"},
-      {"Aspect ratio", {"aspect_ratio"}, true, false, false, nullptr,
-       {{"", fmt::format("Monitor ({}x{})", nfsc::CurrentDisplay().width,
-                         nfsc::CurrentDisplay().height)},
+       "ui.video_mode_refresh_rate"},
+      {"Aspect ratio", {"nfsc.aspect_ratio"}, true, false, false, nullptr,
+       {{"", std::format("Monitor ({}x{})", display.width, display.height)},
         {"16:9", "16:9 (the game's own)"},
         {"21:9", "21:9"},
         {"32:9", "32:9"}}},
-      {"Display", {"fullscreen"}, false, false, false, nullptr,
+      {"Display", {"ui.fullscreen"}, false, false, false, nullptr,
        {{"", "Fullscreen"}, {"false", "Window"}}},
-      {"Logos and intro videos", {"skip_intro"}, false, false, true, FormatIntro,
+      {"Logos and intro videos", {"nfsc.skip_intro"}, false, false, true, FormatIntro,
        {{"false", ""}, {"true", ""}}},
-      {"Resolution", {"draw_resolution_scale_x", "draw_resolution_scale_y"}, true, true, true,
+      {"Resolution", {"gpu.resolution_scale_x", "gpu.resolution_scale_y"}, true, true, true,
        FormatScale, {{"1", ""}, {"2", ""}, {"3", ""}}},
-      {"Sharpening", {"present_effect"}, true, true, true, FormatEffect,
-       {{"bilinear", ""}, {"cas", ""}}},
-      {"Texture filtering", {"anisotropic_override"}, false, true, true, FormatAnisotropic,
+      {"Texture filtering", {"gpu.anisotropic_override"}, false, true, true, FormatAnisotropic,
        {{"-1", ""}, {"3", ""}, {"4", ""}, {"5", ""}}},
-      {"Graphics API", {"gpu_backend"}, true, true, false, nullptr,
-       {{"", "Vulkan"}, {"d3d12", "Direct3D 12"}}},
-      {"Save location", {"portable"}, true, true, false, nullptr,
+      {"Graphics API", {"gpu.driver"}, true, true, true, FormatDriver,
+       {{"vulkan", ""}, {"d3d12", ""}}},
+      {"Save location", {"nfsc.portable"}, true, true, false, nullptr,
        {{"", "Documents"}, {"true", "Next to nfsc.exe (portable)"}}},
   };
-  // Leave out what this build doesn't have (CAS needs the SDK built with
-  // FidelityFX).
   std::erase_if(settings, [](const Setting& setting) {
-    for (const char* cvar : setting.cvars) {
-      const auto* entry = rex::cvar::GetFlagInfo(cvar);
-      if (!entry)
-        return true;
-      for (const auto& choice : setting.choices) {
-        const auto& allowed = entry->constraints.allowed_values;
-        if (!choice.value.empty() && !allowed.empty() &&
-            std::find(allowed.begin(), allowed.end(), choice.value) == allowed.end()) {
-          return true;
-        }
-      }
-    }
-    return false;
+    return std::ranges::any_of(setting.names,
+                               [](const char* name) { return !nfsc::FindSetting(name); });
   });
   for (auto& setting : settings) {
     if (setting.from_profile) {
@@ -205,22 +204,18 @@ std::vector<Setting> BuildSettings() {
   return settings;
 }
 
-// The choice matching the cvar's current value; a value set by hand that none
-// of the choices has is added as one.
+// The choice matching the setting's current value; a value set by hand that none of the
+// choices has is added as one.
 std::string CurrentChoice(Setting& setting) {
-  const auto* entry = rex::cvar::GetFlagInfo(setting.cvars[0]);
-  if (entry && entry->source == rex::cvar::Source::kDefault && setting.replaces) {
-    // Applying a frame rate limit sets the older setting too, as kRuntime; only
-    // a value from the player's config or command line counts.
-    const auto* older = rex::cvar::GetFlagInfo(setting.replaces);
-    if (older && older->source != rex::cvar::Source::kRuntime) {
-      entry = older;
-    }
+  const char* name = setting.names[0];
+  if (!nfsc::ChosenByPlayer(name)) {
+    // A config that sets the lower-level setting instead shows that value.
+    if (!setting.replaces || !nfsc::ChosenByPlayer(setting.replaces))
+      return "";
+    name = setting.replaces;
   }
-  if (!entry || entry->source == rex::cvar::Source::kDefault)
-    return "";
-  const std::string value = entry->getter();
-  if (!setting.from_profile && SameValue(value, entry->default_value))
+  const std::string value = nfsc::SettingText(name);
+  if (!setting.from_profile && SameValue(value, DefaultText(name)))
     return "";
   for (const auto& choice : setting.choices) {
     if (!choice.value.empty() && SameValue(choice.value, value))
@@ -233,8 +228,8 @@ std::string CurrentChoice(Setting& setting) {
 std::string ChoiceLabel(const Setting& setting, const std::string& value,
                         std::string_view profile) {
   if (value.empty() && setting.from_profile) {
-    return fmt::format("Profile: {}",
-                       setting.format(nfsc::ProfileDefault(profile, setting.cvars[0])));
+    return std::format("Profile: {}",
+                       setting.format(nfsc::ProfileDefault(profile, setting.names[0])));
   }
   for (const auto& choice : setting.choices) {
     if (choice.value == value && !choice.label.empty())
@@ -243,19 +238,23 @@ std::string ChoiceLabel(const Setting& setting, const std::string& value,
   return setting.format ? setting.format(value) : value;
 }
 
-void ApplyLive(const char* cvar, const std::string& value) {
+// Applies a value now: at the runtime layer, or, for "", back to the profile's value or the
+// default.
+void ApplyLive(const char* name, const std::string& value) {
+  rex::SettingBase* setting = nfsc::FindSetting(name);
+  if (!setting)
+    return;
   if (!value.empty()) {
-    rex::cvar::SetFlagByName(cvar, value);
+    if (auto result = setting->SetText(rex::SettingLayer::kRuntime, value); !result) {
+      REXLOG_WARN("nfsc: {} = {}: {}", name, value, result.error().GetDescription());
+    }
     return;
   }
-  // Back to the profile's value or the default. SetFlagByName runs the change
-  // callbacks (fullscreen needs them); ResetToDefault marks it unset again.
-  const auto* entry = rex::cvar::GetFlagInfo(cvar);
-  if (!entry)
-    return;
-  const std::string default_value = entry->default_value;
-  rex::cvar::SetFlagByName(cvar, default_value);
-  rex::cvar::ResetToDefault(cvar);
+  (void)setting->Reset();
+  const std::string profile_value = nfsc::ProfileDefault(nfsc::ActiveProfile(), name);
+  if (!profile_value.empty()) {
+    (void)setting->SetText(rex::SettingLayer::kTitle, profile_value);
+  }
 }
 
 std::string_view Trim(std::string_view s) {
@@ -266,19 +265,30 @@ std::string_view Trim(std::string_view s) {
   return s;
 }
 
-// The key of a "key = value" line, or "" for comments, blank lines and table
-// headers.
-std::string KeyOf(std::string_view line) {
+std::string Unquote(std::string_view s) {
+  s = Trim(s);
+  if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front())
+    s = s.substr(1, s.size() - 2);
+  return std::string(s);
+}
+
+// The full name a "key = value" line sets inside a table ("" for the root table), or "" for
+// comments, blank lines and table headers.
+std::string FullNameOf(std::string_view line, const std::string& table) {
   line = Trim(line);
   if (line.empty() || line.front() == '#' || line.front() == '[')
     return "";
   const size_t eq = line.find('=');
-  return eq == std::string_view::npos ? "" : std::string(Trim(line.substr(0, eq)));
+  if (eq == std::string_view::npos)
+    return "";
+  const std::string key = Unquote(line.substr(0, eq));
+  return table.empty() ? key : table + "." + key;
 }
 
-// Updates the given keys in nfsc.toml ("" removes the key) and keeps
-// everything else, comments included. The keys go in the root table, after
-// its last key.
+// Updates the given settings in nfsc.toml ("" removes them) and keeps everything else,
+// comments included. A setting is removed wherever the file sets it (its table, the flat
+// form or an old name); new values go into the root table in the flat form,
+// "scope.name" = value.
 bool SaveToConfig(const std::vector<std::pair<std::string, std::string>>& changes) {
   std::vector<std::string> lines;
   {
@@ -292,43 +302,55 @@ bool SaveToConfig(const std::vector<std::pair<std::string, std::string>>& change
     lines.push_back("# the ones it shows and keeps the rest of this file.");
   }
 
-  auto changed = [&](const std::string& key) {
-    return std::any_of(changes.begin(), changes.end(),
-                       [&](const auto& change) { return change.first == key; });
-  };
+  std::set<std::string> removed;
+  for (const auto& [name, value] : changes) {
+    removed.insert(name);
+    for (const auto& old_name : nfsc::OldNamesOf(name)) {
+      removed.insert(old_name);
+    }
+  }
+  std::string table;
   size_t insert_at = 0;
+  bool in_root = true;
   for (size_t i = 0; i < lines.size();) {
     const std::string_view line = Trim(lines[i]);
-    if (!line.empty() && line.front() == '[')
-      break;  // End of the root table.
-    const std::string key = KeyOf(line);
-    if (!key.empty() && changed(key)) {
-      lines.erase(lines.begin() + i);
+    if (!line.empty() && line.front() == '[') {
+      const size_t end = line.find(']');
+      table = Unquote(line.substr(1, end == std::string_view::npos ? 0 : end - 1));
+      in_root = false;
+      i++;
       continue;
     }
-    if (!key.empty() || (insert_at == i && (line.empty() || line.front() == '#')))
+    const std::string name = FullNameOf(line, table);
+    if (!name.empty() && removed.contains(name)) {
+      lines.erase(lines.begin() + std::ptrdiff_t(i));
+      continue;
+    }
+    if (in_root && (!name.empty() || (insert_at == i && (line.empty() || line.front() == '#'))))
       insert_at = i + 1;
     i++;
   }
 
   std::vector<std::string> added;
-  for (const auto& [cvar, value] : changes) {
+  for (const auto& [name, value] : changes) {
     if (value.empty())
       continue;
-    const auto* entry = rex::cvar::GetFlagInfo(cvar);
-    if (entry && entry->type == rex::cvar::FlagType::String) {
+    const rex::SettingBase* setting = nfsc::FindSetting(name);
+    const bool is_text = setting && (setting->GetType() == rex::SettingType::kString ||
+                                     setting->GetType() == rex::SettingType::kPath);
+    if (is_text) {
       std::string escaped;
       for (char c : value) {
         if (c == '"' || c == '\\')
           escaped += '\\';
         escaped += c;
       }
-      added.push_back(fmt::format("{} = \"{}\"", cvar, escaped));
+      added.push_back(std::format("\"{}\" = \"{}\"", name, escaped));
     } else {
-      added.push_back(fmt::format("{} = {}", cvar, value));
+      added.push_back(std::format("\"{}\" = {}", name, value));
     }
   }
-  lines.insert(lines.begin() + insert_at, added.begin(), added.end());
+  lines.insert(lines.begin() + std::ptrdiff_t(insert_at), added.begin(), added.end());
 
   std::ofstream out(g_config_path, std::ios::trunc);
   for (const auto& line : lines) {
@@ -342,31 +364,23 @@ bool SaveToConfig(const std::vector<std::pair<std::string, std::string>>& change
   return true;
 }
 
-class SettingsWindow final : public rex::ui::ImGuiDialog {
+class SettingsWindow final : public rex::ui::DialogBase {
  public:
-  explicit SettingsWindow(rex::ui::ImGuiDrawer* drawer)
-      : ImGuiDialog(drawer), settings_(BuildSettings()), binds_(BuildKeyBinds()) {
+  SettingsWindow() : settings_(BuildSettings()), binds_(BuildKeyBinds()) {
     for (auto& setting : settings_) {
       initial_.push_back(CurrentChoice(setting));
     }
     pending_ = initial_;
-
     nfsc::SetPadCaptured(true);
     if (g_pause_handler) {
       g_pause_handler(true);
     }
-
-    ImGuiIO& io = GetIO();
-    had_gamepad_nav_ = (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) != 0;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-    io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
   }
 
   void RequestClose() { closing_ = true; }
 
- protected:
+  bool Draw(ImGuiIO& io) override;
   void OnClose() override;
-  void OnDraw(ImGuiIO& io) override;
 
  private:
   struct PadKey {
@@ -374,13 +388,13 @@ class SettingsWindow final : public rex::ui::ImGuiDialog {
     ImGuiKey key;
   };
   static constexpr PadKey kPadKeys[] = {
-      {X_INPUT_GAMEPAD_DPAD_UP, ImGuiKey_GamepadDpadUp},
-      {X_INPUT_GAMEPAD_DPAD_DOWN, ImGuiKey_GamepadDpadDown},
-      {X_INPUT_GAMEPAD_DPAD_LEFT, ImGuiKey_GamepadDpadLeft},
-      {X_INPUT_GAMEPAD_DPAD_RIGHT, ImGuiKey_GamepadDpadRight},
+      {kPadDPadUp, ImGuiKey_GamepadDpadUp},
+      {kPadDPadDown, ImGuiKey_GamepadDpadDown},
+      {kPadDPadLeft, ImGuiKey_GamepadDpadLeft},
+      {kPadDPadRight, ImGuiKey_GamepadDpadRight},
       // Start too: on the keyboard that's Enter.
-      {X_INPUT_GAMEPAD_A | X_INPUT_GAMEPAD_START, ImGuiKey_GamepadFaceDown},
-      {X_INPUT_GAMEPAD_B, ImGuiKey_GamepadFaceRight},
+      {kPadA | kPadStart, ImGuiKey_GamepadFaceDown},
+      {kPadB, ImGuiKey_GamepadFaceRight},
   };
 
   void FeedPad(ImGuiIO& io);
@@ -400,13 +414,15 @@ class SettingsWindow final : public rex::ui::ImGuiDialog {
   bool closing_ = false;
   bool save_failed_ = false;
   bool show_key_binds_ = false;
-  bool focus_first_item_ = false;
-  int capturing_key_ = -1;  // index in binds_
+  bool focus_first_item_ = true;  // Also on opening, so the keys work right away.
+  int capturing_key_ = -1;      // index in binds_
   bool capture_armed_ = false;  // the key that started the capture is released
   bool first_frame_ = true;
+  int frames_ = 0;
   bool had_gamepad_nav_ = false;
-  // Buttons held when the window opened (the one that opened it) are ignored
-  // until released.
+  bool had_keyboard_nav_ = false;
+  // Buttons held when the window opened (the one that opened it) are ignored until
+  // released.
   uint32_t ignored_buttons_ = ~0u;
   uint32_t previous_pad_ = 0;
 };
@@ -414,12 +430,15 @@ class SettingsWindow final : public rex::ui::ImGuiDialog {
 SettingsWindow* g_window = nullptr;
 
 void SettingsWindow::OnClose() {
-  ImGuiIO& io = GetIO();
+  ImGuiIO& io = ImGui::GetIO();
   for (const auto& pad_key : kPadKeys) {
     io.AddKeyEvent(pad_key.key, false);
   }
   if (!had_gamepad_nav_) {
     io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+  }
+  if (had_keyboard_nav_) {
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   }
   nfsc::SetPadCaptured(false);
   if (g_pause_handler) {
@@ -432,11 +451,19 @@ void SettingsWindow::FeedPad(ImGuiIO& io) {
   uint32_t pad = capturing_key_ >= 0 ? 0 : nfsc::ReadPad();
   ignored_buttons_ &= pad;
   pad &= ~ignored_buttons_;
+  if (pad != previous_pad_) {  // DEBUG
+    REXLOG_INFO("nfsc-debug: frame {} pad {:04X} popup {} profile '{}' navkb {} navpad {}",
+                ImGui::GetFrameCount(), pad,
+                ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
+                pending_.empty() ? "" : pending_[0],
+                (io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0,
+                (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) != 0);
+  }
   for (const auto& pad_key : kPadKeys) {
     io.AddKeyEvent(pad_key.key, (pad & pad_key.buttons) != 0);
   }
   // B goes back, unless it closes an open list first.
-  const bool b_pressed = (pad & X_INPUT_GAMEPAD_B) && !(previous_pad_ & X_INPUT_GAMEPAD_B);
+  const bool b_pressed = (pad & kPadB) && !(previous_pad_ & kPadB);
   if (b_pressed &&
       !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
     if (show_key_binds_) {
@@ -469,27 +496,29 @@ bool SettingsWindow::Apply() {
   for (size_t i = 0; i < settings_.size(); i++) {
     if (pending_[i] == initial_[i])
       continue;
-    for (const char* cvar : settings_[i].cvars) {
-      changes.emplace_back(cvar, pending_[i]);
-      g_changed.insert(cvar);
+    for (const char* name : settings_[i].names) {
+      changes.emplace_back(name, pending_[i]);
       if (!settings_[i].restart) {
-        ApplyLive(cvar, pending_[i]);
+        ApplyLive(name, pending_[i]);
       }
     }
     if (settings_[i].replaces) {
       changes.emplace_back(settings_[i].replaces, "");
-      g_changed.insert(settings_[i].replaces);
-      nfsc::ApplyFrameRateLimit();
     }
   }
   for (const auto& bind : binds_) {
     if (bind.pending == bind.initial)
       continue;
     // A key back at its default goes out of nfsc.toml.
-    const bool is_default = bind.pending == rex::cvar::GetFlagInfo(bind.cvar)->default_value;
-    changes.emplace_back(bind.cvar, is_default ? std::string() : bind.pending);
-    g_changed.insert(bind.cvar);
-    ApplyLive(bind.cvar, is_default ? std::string() : bind.pending);
+    const bool is_default = bind.pending == DefaultText(bind.name);
+    changes.emplace_back(bind.name, is_default ? std::string() : bind.pending);
+    ApplyLive(bind.name, is_default ? std::string() : bind.pending);
+  }
+  for (const auto& [name, value] : changes) {
+    g_changed.insert(name);
+    for (const auto& old_name : nfsc::OldNamesOf(name)) {
+      g_changed.insert(old_name);
+    }
   }
   save_failed_ = !SaveToConfig(changes);
   if (save_failed_) {
@@ -507,8 +536,12 @@ bool SettingsWindow::Apply() {
 }
 
 void SettingsWindow::FocusFirstItem() {
-  if (focus_first_item_) {
+  // Not in the first frame: the window only gets the focus then, and a focus request in
+  // the same frame is lost.
+  if (focus_first_item_ && frames_ > 0) {
     ImGui::SetKeyboardFocusHere();
+    // Show the cursor, so that the first press selects instead of only revealing it.
+    ImGui::SetNavCursorVisible(true);
     focus_first_item_ = false;
   }
 }
@@ -524,7 +557,7 @@ void SettingsWindow::UpdateKeyCapture() {
   if (key.empty())
     return;
   if (!ImGui::IsKeyDown(ImGuiKey_Escape)) {
-    binds_[capturing_key_].pending = key;
+    binds_[size_t(capturing_key_)].pending = key;
   }
   capturing_key_ = -1;
   ignored_buttons_ = ~0u;  // Until the key is released again.
@@ -536,8 +569,8 @@ void SettingsWindow::DrawKeyBinds() {
     label_width = std::max(label_width, ImGui::CalcTextSize(bind.label).x);
   }
   label_width += ImGui::GetStyle().ItemSpacing.x * 3 + ImGui::GetStyle().WindowPadding.x;
-  const float key_width = ImGui::CalcTextSize("Press a key (Esc cancels)").x +
-                          ImGui::GetStyle().FramePadding.x * 2;
+  const float key_width =
+      ImGui::CalcTextSize("Press a key (Esc cancels)").x + ImGui::GetStyle().FramePadding.x * 2;
   for (size_t i = 0; i < binds_.size(); i++) {
     ImGui::PushID(int(i));
     ImGui::AlignTextToFramePadding();
@@ -567,15 +600,15 @@ void SettingsWindow::DrawKeyBinds() {
   ImGui::SameLine();
   if (ImGui::Button("Reset keys")) {
     for (auto& bind : binds_) {
-      bind.pending = rex::cvar::GetFlagInfo(bind.cvar)->default_value;
+      bind.pending = DefaultText(bind.name);
     }
   }
 }
 
 void SettingsWindow::DrawSetting(size_t index, float label_width, float combo_width) {
   const Setting& setting = settings_[index];
-  const std::string profile = pending_[kProfileSetting].empty() ? "original"
-                                                                : pending_[kProfileSetting];
+  const std::string profile =
+      pending_[kProfileSetting].empty() ? "original" : pending_[kProfileSetting];
   ImGui::PushID(int(index));
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted(setting.label);
@@ -602,8 +635,8 @@ void SettingsWindow::DrawSetting(size_t index, float label_width, float combo_wi
 }
 
 void SettingsWindow::DrawSettings() {
-  const std::string profile = pending_[kProfileSetting].empty() ? "original"
-                                                                : pending_[kProfileSetting];
+  const std::string profile =
+      pending_[kProfileSetting].empty() ? "original" : pending_[kProfileSetting];
   float label_width = 0.0f;
   float combo_width = 0.0f;
   for (const auto& setting : settings_) {
@@ -633,10 +666,19 @@ void SettingsWindow::DrawSettings() {
   }
 }
 
-void SettingsWindow::OnDraw(ImGuiIO& io) {
+bool SettingsWindow::Draw(ImGuiIO& io) {
   if (closing_) {
-    Close();
-    return;
+    return false;
+  }
+  if (first_frame_) {
+    had_gamepad_nav_ = (io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) != 0;
+    had_keyboard_nav_ = (io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    // The keyboard reaches the window as a pad (pad.h), like it reaches the game. ImGui's
+    // own keyboard navigation would press Space a second time, sometimes a frame apart,
+    // which opens a list and closes it again.
+    io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+    io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
   }
   FeedPad(io);
   if (capturing_key_ < 0 && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
@@ -644,8 +686,7 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
   }
   UpdateKeyCapture();
 
-  // The SDK's ImGui font is a small bitmap font; scale it in whole steps (3x at
-  // 1440p, 1x in a 1280x720 window).
+  // Scale the SDK's ImGui font in whole steps (3x at 1440p, 1x in a 1280x720 window).
   const float scale = std::max(
       1.0f, std::floor(std::min(io.DisplaySize.y / 480.0f, io.DisplaySize.x / 850.0f)));
   const ImGuiStyle& style = ImGui::GetStyle();
@@ -687,8 +728,8 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
       ImGui::TextDisabled("* Takes effect after a restart.");
     }
     ImGui::Spacing();
-    // Apply is the wider button, so moving down from the full-width Advanced
-    // header lands on it (ImGui picks the candidate nearest to its center).
+    // Apply is the wider button, so moving down from the full-width Advanced header lands
+    // on it (ImGui picks the candidate nearest to its center).
     const float buttons_width = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x;
     ImGui::BeginDisabled(!HasChanges());
     if (ImGui::Button(NeedsRestart() ? "Apply and restart" : "Apply",
@@ -709,69 +750,17 @@ void SettingsWindow::OnDraw(ImGuiIO& io) {
   if (!open) {
     closing_ = true;
   }
+  frames_++;
+  return true;
 }
-
-#if defined(_WIN32)
-// Quotes an argument the way CommandLineToArgvW reads it back.
-std::wstring QuoteArgument(const std::wstring& arg) {
-  if (!arg.empty() && arg.find_first_of(L" \t\"") == std::wstring::npos)
-    return arg;
-  std::wstring quoted = L"\"";
-  size_t backslashes = 0;
-  for (wchar_t c : arg) {
-    if (c == L'\\') {
-      backslashes++;
-      continue;
-    }
-    quoted.append(c == L'"' ? backslashes * 2 + 1 : backslashes, L'\\');
-    backslashes = 0;
-    quoted += c;
-  }
-  quoted.append(backslashes * 2, L'\\');
-  quoted += L'"';
-  return quoted;
-}
-
-// Tells the new process which one to wait for. An environment variable rather
-// than a cvar, so it can't end up in nfsc.toml.
-constexpr wchar_t kWaitForPidVariable[] = L"NFSC_WAIT_FOR_PID";
-
-void StartAgain() {
-  std::wstring exe(32768, L'\0');
-  exe.resize(GetModuleFileNameW(nullptr, exe.data(), DWORD(exe.size())));
-  std::wstring command_line = QuoteArgument(exe);
-
-  int argc = 0;
-  LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-  for (int i = 1; argv && i < argc; i++) {
-    const std::wstring arg = argv[i];
-    const bool dropped = std::any_of(g_changed.begin(), g_changed.end(), [&](const auto& cvar) {
-      const std::wstring flag = L"--" + std::wstring(cvar.begin(), cvar.end());
-      return arg == flag || arg.starts_with(flag + L"=");
-    });
-    if (!dropped) {
-      command_line += L" " + QuoteArgument(arg);
-    }
-  }
-  LocalFree(argv);
-
-  SetEnvironmentVariableW(kWaitForPidVariable, std::to_wstring(GetCurrentProcessId()).c_str());
-  STARTUPINFOW startup_info = {sizeof(startup_info)};
-  PROCESS_INFORMATION process_info = {};
-  if (CreateProcessW(exe.c_str(), command_line.data(), nullptr, nullptr, FALSE, 0, nullptr,
-                     nullptr, &startup_info, &process_info)) {
-    CloseHandle(process_info.hThread);
-    CloseHandle(process_info.hProcess);
-  } else {
-    REXLOG_ERROR("nfsc: could not start the game again (error {})", GetLastError());
-  }
-  SetEnvironmentVariableW(kWaitForPidVariable, nullptr);
-}
-#endif
 
 }  // namespace
 
 namespace nfsc {
+
+void SetSettingsUI(rex::ui::IUISystem* ui) {
+  g_ui = ui;
+}
 
 void SetSettingsConfigPath(std::filesystem::path path) {
   g_config_path = std::move(path);
@@ -785,37 +774,24 @@ void SetPauseHandler(std::function<void(bool)> handler) {
   g_pause_handler = std::move(handler);
 }
 
-void OpenSettingsWindow(rex::ui::ImGuiDrawer* drawer) {
-  if (!g_window && drawer) {
-    g_window = new SettingsWindow(drawer);  // Deletes itself when closed.
+void OpenSettingsWindow() {
+  if (!g_window && g_ui) {
+    auto window = std::make_unique<SettingsWindow>();
+    g_window = window.get();
+    g_ui->AddDialog(std::move(window));  // Removed and deleted after OnClose.
   }
 }
 
-void ToggleSettingsWindow(rex::ui::ImGuiDrawer* drawer) {
+void ToggleSettingsWindow() {
   if (g_window) {
     g_window->RequestClose();
   } else {
-    OpenSettingsWindow(drawer);
+    OpenSettingsWindow();
   }
 }
 
-void StartNewInstance() {
-#if defined(_WIN32)
-  StartAgain();
-#endif
-}
-
-void WaitForPreviousInstance() {
-#if defined(_WIN32)
-  wchar_t pid[16] = {};
-  if (!GetEnvironmentVariableW(kWaitForPidVariable, pid, DWORD(std::size(pid))))
-    return;
-  SetEnvironmentVariableW(kWaitForPidVariable, nullptr);
-  if (HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, DWORD(std::wcstoul(pid, nullptr, 10)))) {
-    WaitForSingleObject(process, 30000);
-    CloseHandle(process);
-  }
-#endif
+const std::set<std::string>& ChangedSettings() {
+  return g_changed;
 }
 
 }  // namespace nfsc

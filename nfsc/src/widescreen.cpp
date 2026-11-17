@@ -1,4 +1,4 @@
-// nfsc - widescreen / ultrawide rendering (aspect_ratio, e.g. 21:9 or 32:9).
+// nfsc - widescreen / ultrawide rendering (nfsc.aspect_ratio, e.g. 21:9 or 32:9).
 //
 // A wider render size widens the front buffer, HUD and 3D viewport. The main
 // scene's 4x MSAA tiles (1280x256) fill the 10 MiB EDRAM exactly, so wider
@@ -16,30 +16,14 @@
 #include <cstdio>
 #include <string>
 
-#include <rex/cvar.h>
-#include <rex/hook.h>
-#include <rex/kernel/xboxkrnl/video.h>
-#include <rex/logging.h>
+#include <rex/logging/log_category.h>
+#include <rex/ppc/hook.h>
+#include <rex/settings_registry.h>
 
 #include "display.h"
-#include "profiles.h"
+#include "settings.h"
 #include "widescreen.h"
 
-REXCVAR_DEFINE_STRING(aspect_ratio, "auto", "NFSC",
-                      "Screen aspect ratio for the game's 3D view and HUD: auto (the monitor's), "
-                      "16:9 (the game's own), 21:9, 32:9 or any W:H. Wider ratios render at "
-                      "720 * W/H x 720.")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_INT32(render_width, 0, "NFSC",
-                     "Game render width in pixels (0 = from aspect_ratio)")
-    .range(0, 3840)
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_INT32(render_height, 0, "NFSC",
-                     "Game render height in pixels (0 = the game's own 720); experimental")
-    .range(0, 2160)
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 REX_EXTERN(__imp__sub_8250B0D0);
 REX_EXTERN(__imp__sub_82500168);
@@ -58,8 +42,8 @@ void StoreU32(uint8_t* base, uint32_t addr, uint32_t value) {
 
 // Replaces the game's 1280x720 render size with the configured one.
 void ApplyRenderSize(uint8_t* base) {
-  const int32_t width = REXCVAR_GET(render_width);
-  const int32_t height = REXCVAR_GET(render_height);
+  const int32_t width = nfsc::Settings().render_width.Get();
+  const int32_t height = nfsc::Settings().render_height.Get();
   if (width <= 0 && height <= 0) {
     return;
   }
@@ -102,7 +86,7 @@ REX_EXTERN(__imp__sub_824FFAB0);
 REX_HOOK_RAW(sub_824FFAB0) {
   const uint32_t obj = ctx.r3.u32;
   __imp__sub_824FFAB0(ctx, base);
-  const int32_t width = REXCVAR_GET(render_width);
+  const int32_t width = nfsc::Settings().render_width.Get();
   if (width <= 0 || width == 1280) {
     return;
   }
@@ -125,7 +109,7 @@ REX_HOOK_RAW(sub_824FFAB0) {
 REX_EXTERN(__imp__sub_82505998);
 REX_HOOK_RAW(sub_82505998) {
   const uint32_t desc = ctx.r5.u32;
-  if (REXCVAR_GET(render_width) > 1280 && desc != 0) {
+  if (nfsc::Settings().render_width.Get() > 1280 && desc != 0) {
     constexpr uint64_t kEdramBytes = 10 * 1024 * 1024;
     constexpr uint64_t kBytesPerSample = 8;  // 32-bit color + 32-bit depth
     const uint32_t width = LoadU32(base, desc + 8);
@@ -142,12 +126,22 @@ REX_HOOK_RAW(sub_82505998) {
 namespace {
 
 // Loading screens (Loading.fng, Loading_Tips.fng, Loading_Controller.fng,
-// loading_boot.fng) are drawn stretched across the whole render width, unlike
-// the other FE packages. While one is active, present the frame at 16:9 (as
-// for movies), which undoes the stretch. The FE package list hangs off the FE
-// manager at 0x82C64ACC: *manager + 216 is the list, +12 its first package;
-// per package +8 next, +12 name, +32 active (see sub_822FDEE8).
-bool LoadingScreenActive(uint8_t* base) {
+// loading_boot.fng) and movies (FEAnyMovie.fng) are drawn stretched across the
+// whole render width, unlike the other FE packages. While one is active, present
+// the frame at 16:9, which undoes the stretch and pillarboxes it. The FE package
+// list hangs off the FE manager at 0x82C64ACC: *manager + 216 is the list, +12
+// its first package; per package +8 next, +12 name, +32 active (see
+// sub_822FDEE8).
+bool StartsWith(const char* text, const char* prefix) {
+  for (; *prefix; ++text, ++prefix) {
+    if ((*text | 0x20) != (*prefix | 0x20)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SixteenByNineScreenActive(uint8_t* base) {
   const uint32_t manager = LoadU32(base, 0x82C64ACC);
   if (!manager) {
     return false;
@@ -166,11 +160,7 @@ bool LoadingScreenActive(uint8_t* base) {
       continue;
     }
     const char* text = reinterpret_cast<const char*>(base + name);
-    bool match = true;
-    for (int c = 0; c < 7 && match; ++c) {
-      match = (text[c] | 0x20) == "loading"[c];
-    }
-    if (match) {
+    if (StartsWith(text, "loading") || StartsWith(text, "feanymovie")) {
       return true;
     }
   }
@@ -182,33 +172,39 @@ bool LoadingScreenActive(uint8_t* base) {
 namespace nfsc {
 
 void UpdatePresentAspect(uint8_t* base) {
-  if (REXCVAR_GET(render_width) <= 1280) {
+  if (Settings().render_width.Get() <= 1280) {
     return;
   }
-  static bool loading = false;
-  const bool now = LoadingScreenActive(base);
-  if (now != loading) {
-    loading = now;
-    rex::kernel::xboxkrnl::SetPresentAspectOverride(now);
-    REXLOG_INFO("nfsc: loading screen {}", now ? "shown, presenting at 16:9" : "hidden");
+  static bool sixteen_by_nine = false;
+  const bool now = SixteenByNineScreenActive(base);
+  if (now != sixteen_by_nine) {
+    sixteen_by_nine = now;
+    if (rex::SettingBase* setting = FindSetting("gpu.xenos.present_aspect")) {
+      if (now) {
+        (void)setting->SetText(rex::SettingLayer::kRuntime, "16:9");
+      } else {
+        (void)setting->Reset();
+      }
+    }
   }
 }
 
 void ApplyWidescreen() {
   unsigned aspect_x = 16, aspect_y = 9;
-  const std::string& aspect = REXCVAR_GET(aspect_ratio);
+  const std::string aspect = Settings().aspect_ratio.Get();
   if (aspect == "auto") {
     aspect_x = CurrentDisplay().width;
     aspect_y = CurrentDisplay().height;
-  } else if (std::sscanf(aspect.c_str(), "%u:%u", &aspect_x, &aspect_y) != 2 || !aspect_x || !aspect_y) {
+  } else if (std::sscanf(aspect.c_str(), "%u:%u", &aspect_x, &aspect_y) != 2 || !aspect_x ||
+             !aspect_y) {
     REXLOG_WARN("nfsc: invalid aspect_ratio '{}', using 16:9", aspect);
     aspect_x = 16;
     aspect_y = 9;
   }
-  // Width at the game's 720 lines, rounded to a multiple of 8. Narrower than
-  // 16:9 is not supported (the game would have to shrink its 1280 layout).
+  // Width at the game's 720 lines, rounded to a multiple of 8. Narrower than 16:9 is not
+  // supported (the game would have to shrink its 1280 layout).
   uint32_t width = (720 * aspect_x / aspect_y + 4) / 8 * 8;
-  if (width <= 1280) {
+  if (width <= 1280 && !ChosenByPlayer("nfsc.render_width")) {
     return;
   }
   // 2x MSAA tiles of 256 lines fit the 10 MiB EDRAM up to 2560 pixels.
@@ -216,15 +212,14 @@ void ApplyWidescreen() {
     REXLOG_WARN("nfsc: aspect_ratio {} needs {} px, limited to 2560", aspect, width);
     width = 2560;
   }
-  const std::string width_text = std::to_string(width);
-  SetCvarDefault("render_width", width_text);
+  auto& registry = REX_SETTINGS();
+  (void)registry.SetText(rex::SettingLayer::kTitle, "nfsc.render_width", std::to_string(width));
   // The guest video mode drives the presenter's aspect ratio.
-  SetCvarDefault("video_mode_width", std::to_string(REXCVAR_GET(render_width)));
-  SetCvarDefault("video_mode_height", "720");
-  // Movies are 16:9 and drawn stretched across the wider frame; present them at
-  // 16:9 (pillarboxed on a wide screen).
-  SetCvarDefault("present_movie_aspect", "16:9");
-  REXLOG_INFO("nfsc: aspect ratio {} -> render {}x720", aspect, REXCVAR_GET(render_width));
+  const int32_t render_width = Settings().render_width.Get();
+  (void)registry.SetText(rex::SettingLayer::kTitle, "ui.video_mode_width",
+                         std::to_string(render_width));
+  (void)registry.SetText(rex::SettingLayer::kTitle, "ui.video_mode_height", "720");
+  REXLOG_INFO("nfsc: aspect ratio {} -> render {}x720", aspect, render_width);
 }
 
 }  // namespace nfsc

@@ -8,32 +8,25 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <format>
 #include <fstream>
+#include <span>
 #include <string>
 #include <vector>
 
-#include <rex/cvar.h>
-#include <rex/logging.h>
-#include <rex/runtime.h>
-#include <rex/system.h>
-#include <rex/system/kernel_state.h>
-#include <rex/system/user_module.h>
-#include <rex/system/xex_module.h>
+#include <rex/filesystem/file.h>
+#include <rex/filesystem/file_open.h>
+#include <rex/filesystem/file_system.h>
+#include <rex/logging/log_category.h>
+#include <rex/settings_registry.h>
+
+#include "settings.h"
 
 #if defined(_WIN32)
 #include <windows.h>
 #include <commdlg.h>
+#include <shlobj.h>
 #endif
-
-REXCVAR_DEFINE_BOOL(skip_edition_check, false, "NFSC",
-                    "Start even if default.xex is not the Collector's Edition executable this "
-                    "build was recompiled from (it will most likely crash)")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_BOOL(portable, false, "NFSC",
-                    "Keep savegames, the shader cache and the remembered game path in a "
-                    "\"userdata\" folder next to nfsc.exe")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
 
 namespace nfsc {
 
@@ -163,53 +156,145 @@ void CopyToPortable(const std::filesystem::path& user_dir, const std::filesystem
   }
 }
 
+// The player's Documents folder, where SDK v0.10 kept the user data.
+std::filesystem::path DocumentsFolder() {
+#if defined(_WIN32)
+  PWSTR path = nullptr;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &path))) {
+    std::filesystem::path documents(path);
+    CoTaskMemFree(path);
+    return documents;
+  }
+#endif
+  return std::filesystem::current_path();
+}
+
+struct XexIdentity {
+  bool read = false;
+  uint32_t title_id = 0;
+  uint32_t version = 0;
+  std::array<uint8_t, 20> first_page_digest = {};
+};
+
+uint32_t LoadBE32(const std::vector<uint8_t>& d, size_t offset) {
+  if (offset + 4 > d.size())
+    return 0;
+  return uint32_t(d[offset]) << 24 | uint32_t(d[offset + 1]) << 16 | uint32_t(d[offset + 2]) << 8 |
+         d[offset + 3];
+}
+
+// The title ID and version from the execution info header (0x00040006), and the digest of
+// the first page descriptor in the security info (see tools/xexinfo.py).
+XexIdentity ReadXexIdentity(rex::filesystem::IFileSystem& file_system) {
+  XexIdentity id;
+  auto opened = file_system.Open("game:\\default.xex", rex::filesystem::OpenOptions{});
+  if (!opened || !opened->file) {
+    return id;
+  }
+  std::vector<uint8_t> header(64 * 1024);
+  auto read = opened->file->Read(std::span<rex::u8>(header.data(), header.size()), 0);
+  header.resize(read ? *read : 0);
+  if (header.size() < 0x18 || LoadBE32(header, 0) != 0x58455832) {  // "XEX2"
+    return id;
+  }
+  const uint32_t security = LoadBE32(header, 0x10);
+  const uint32_t count = LoadBE32(header, 0x14);
+  for (uint32_t i = 0; i < count && i < 64; i++) {
+    if (LoadBE32(header, 0x18 + i * 8) == 0x00040006) {
+      const uint32_t info = LoadBE32(header, 0x18 + i * 8 + 4);
+      id.version = LoadBE32(header, info + 4);
+      id.title_id = LoadBE32(header, info + 12);
+    }
+  }
+  const size_t digest = size_t(security) + 0x184 + 4;
+  if (LoadBE32(header, security + 0x180) == 0 || digest + 20 > header.size()) {
+    return id;
+  }
+  std::copy_n(header.begin() + std::ptrdiff_t(digest), 20, id.first_page_digest.begin());
+  id.read = true;
+  return id;
+}
+
+// SDK v0.10 caches (v0.752 and older) can't be used by SDK v0.11: it doesn't find their shaders
+// again and logs an error for each stored pipeline at every start. Clear them once; the cache
+// builds up again while playing.
+void ClearOldShaderCache(const std::filesystem::path& cache_dir) {
+  if (cache_dir.empty()) {
+    return;
+  }
+  std::error_code ec;
+  const std::filesystem::path marker = cache_dir / "rexglue-sdk-0.11";
+  if (std::filesystem::exists(marker, ec)) {
+    return;
+  }
+  if (std::filesystem::exists(cache_dir / "shaders", ec)) {
+    std::filesystem::remove_all(cache_dir / "shaders", ec);
+    REXLOG_INFO("nfsc: cleared the shader cache of an older version in {}", cache_dir.string());
+  }
+  std::filesystem::create_directories(cache_dir, ec);
+  std::ofstream(marker) << "The shader cache in this folder is for ReXGlue SDK 0.11.\n";
+}
+
 std::string Hex(const uint8_t* data, size_t size) {
   std::string out;
   for (size_t i = 0; i < size; ++i) {
-    out += fmt::format("{:02X}", data[i]);
+    out += std::format("{:02X}", data[i]);
   }
   return out;
 }
 
 }  // namespace
 
-void ConfigureDataPaths(rex::PathConfig& paths, const std::filesystem::path& exe_dir) {
+void ConfigureDataPaths(const std::filesystem::path& exe_dir) {
   std::error_code ec;
-  // The SDK reads the path settings before it loads nfsc.toml, so they would
-  // only work on the command line.
-  if (std::filesystem::exists(paths.config_path, ec)) {
-    rex::cvar::LoadConfig(paths.config_path);
-  }
-  const std::filesystem::path default_user_dir = paths.user_data_root;
+  // SDK v0.10 kept savegames in Documents\nfsc; v0.11 would default to a "user" folder
+  // next to the executable. Keep them where they are.
+  const std::filesystem::path default_user_dir = DocumentsFolder() / "nfsc";
   const std::filesystem::path local_cache_dir = LocalCacheFolder();
-  const std::string user_dir = rex::cvar::GetFlagByName("user_data_root");
-  const std::string cache_dir = rex::cvar::GetFlagByName("cache_root");
-  const bool portable = REXCVAR_GET(portable);
+  const bool user_chosen = ChosenByPlayer("app.user_root");
+  const bool cache_chosen = ChosenByPlayer("app.cache_root");
+  const bool portable = Settings().portable.Get();
 
-  if (!user_dir.empty()) {
-    paths.user_data_root = user_dir;
-  } else if (portable) {
-    paths.user_data_root = exe_dir / "userdata";
-    if (!std::filesystem::exists(paths.user_data_root, ec)) {
-      CopyToPortable(default_user_dir, local_cache_dir, paths.user_data_root);
+  std::filesystem::path user_dir = user_chosen ? std::filesystem::path(SettingText("app.user_root"))
+                                               : default_user_dir;
+  if (!user_chosen && portable) {
+    user_dir = exe_dir / "userdata";
+    if (!std::filesystem::exists(user_dir, ec)) {
+      CopyToPortable(default_user_dir, local_cache_dir, user_dir);
     }
   }
 
-  if (!cache_dir.empty()) {
-    paths.cache_root = cache_dir;
-  } else if (portable || !user_dir.empty() || local_cache_dir.empty()) {
-    paths.cache_root = paths.user_data_root / "cache";
-  } else {
-    MoveCache(default_user_dir / "cache", local_cache_dir);
-    paths.cache_root = local_cache_dir;
+  std::filesystem::path cache_dir;
+  if (!cache_chosen) {
+    if (portable || user_chosen || local_cache_dir.empty()) {
+      cache_dir = user_dir / "cache";
+    } else {
+      MoveCache(default_user_dir / "cache", local_cache_dir);
+      cache_dir = local_cache_dir;
+    }
   }
+
+  ClearOldShaderCache(cache_chosen ? std::filesystem::path(SettingText("app.cache_root"))
+                                   : cache_dir);
+
+  auto& registry = REX_SETTINGS();
+  if (!user_chosen) {
+    (void)registry.SetText(rex::SettingLayer::kTitle, "app.user_root", user_dir.generic_string());
+  }
+  if (!cache_chosen) {
+    (void)registry.SetText(rex::SettingLayer::kTitle, "app.cache_root",
+                           cache_dir.generic_string());
+  }
+  REXLOG_INFO("nfsc: user data {}, cache {}", SettingText("app.user_root"),
+              SettingText("app.cache_root"));
 }
 
-void ResolveGamePath(rex::PathConfig& paths, const std::filesystem::path& exe_dir) {
-  if (!paths.game_data_root.empty()) {
-    return;
+bool ResolveGamePath(const std::filesystem::path& exe_dir) {
+  if (ChosenByPlayer("title.game_root")) {
+    return true;
   }
-  std::filesystem::path path = ReadRememberedPath(paths.user_data_root);
+  const std::filesystem::path user_dir = SettingText("app.user_root");
+  std::filesystem::path path = ReadRememberedPath(user_dir);
   if (!path.empty() && !IsGamePath(path)) {
     REXLOG_WARN("nfsc: remembered game path {} is gone", path.string());
     path.clear();
@@ -220,51 +305,46 @@ void ResolveGamePath(rex::PathConfig& paths, const std::filesystem::path& exe_di
       path = PickGamePath();
     }
     if (!path.empty() && IsGamePath(path)) {
-      RememberPath(paths.user_data_root, path);
+      RememberPath(user_dir, path);
     }
   }
-  if (!path.empty()) {
-    REXLOG_INFO("nfsc: game data: {}", path.string());
-    paths.game_data_root = path;
+  if (path.empty()) {
+    return false;
   }
+  REXLOG_INFO("nfsc: game data: {}", path.string());
+  (void)REX_SETTINGS().SetText(rex::SettingLayer::kTitle, "title.game_root",
+                               path.generic_string());
+  return true;
 }
 
-bool CheckEdition(rex::Runtime& runtime) {
-  auto module = runtime.kernel_state()->GetExecutableModule();
-  if (!module) {
-    return true;
+std::string CheckEdition(rex::filesystem::IFileSystem& file_system) {
+  const XexIdentity xex = ReadXexIdentity(file_system);
+  if (!xex.read) {
+    REXLOG_WARN("nfsc: could not read the header of default.xex");
+    return {};
   }
-  const rex::runtime::XexModule* xex = module->xex_module();
-  const rex::xex2_opt_execution_info* info = xex->opt_execution_info();
-  uint32_t title_id = info ? uint32_t(info->title_id) : 0;
-  uint32_t version = info ? uint32_t(info->version_value) : 0;
-  const auto* security = xex->xex_security_info();
-  std::array<uint8_t, 20> digest = {};
-  if (security->page_descriptor_count) {
-    std::copy_n(reinterpret_cast<const uint8_t*>(security->page_descriptors[0].data_digest),
-                digest.size(), digest.begin());
+  REXLOG_INFO("nfsc: default.xex title {:08X}, version {:08X}, first page digest {}",
+              xex.title_id, xex.version, Hex(xex.first_page_digest.data(), 20));
+  if (xex.title_id == kTitleId && xex.version == kVersion &&
+      xex.first_page_digest == kFirstPageDigest) {
+    return {};
   }
-  REXLOG_INFO("nfsc: default.xex title {:08X}, version {:08X}, first page digest {}", title_id,
-              version, Hex(digest.data(), digest.size()));
-  if (title_id == kTitleId && version == kVersion && digest == kFirstPageDigest) {
-    return true;
-  }
-  if (REXCVAR_GET(skip_edition_check)) {
+  if (Settings().skip_edition_check.Get()) {
     REXLOG_WARN("nfsc: default.xex is not the expected one; starting anyway");
-    return true;
+    return {};
   }
-  std::string message = fmt::format(
+  const uint32_t version = xex.version;
+  std::string message = std::format(
       "This build only runs Need for Speed: Carbon Collector's Edition for the Xbox 360 "
       "(title ID 454107EC, version 0.0.0.7).\n\n"
       "The game data you chose has title ID {:08X}, version {}.{}.{}.{}{}.\n\n"
       "Delete game_path.txt in your user data folder to choose a different disc image or "
       "folder at the next start.",
-      title_id, (version >> 28) & 0xF, (version >> 24) & 0xF, (version >> 8) & 0xFFFF,
+      xex.title_id, (version >> 28) & 0xF, (version >> 24) & 0xF, (version >> 8) & 0xFFFF,
       version & 0xFF,
-      title_id == kTitleId && version == kVersion ? " but a different executable" : "");
+      xex.title_id == kTitleId && xex.version == kVersion ? " but a different executable" : "");
   REXLOG_ERROR("nfsc: {}", message);
-  rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, message);
-  return false;
+  return message;
 }
 
 }  // namespace nfsc

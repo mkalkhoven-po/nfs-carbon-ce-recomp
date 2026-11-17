@@ -4,7 +4,7 @@ The zip holds the executable, the SDK runtime DLLs, README, release notes and li
 No game files: players supply their own disc image or extracted disc.
 
 Usage (after building nfsc with the win-amd64-release preset):
-    python tools/package-release.py [--version 0.752]
+    python tools/package-release.py [--version 0.76]
 """
 
 import argparse
@@ -14,18 +14,18 @@ import sys
 import zipfile
 from pathlib import Path
 
-DEFAULT_VERSION = "0.752"
+DEFAULT_VERSION = "0.76"
 
 ROOT = Path(__file__).resolve().parent.parent
-BUILD = ROOT / "nfsc" / "out" / "build" / "win-amd64-release"
+BUILD_TREE = ROOT / "nfsc" / "out" / "build" / "win-amd64"
+BUILD = BUILD_TREE / "Release"
 SDK = ROOT / "sdk" / "rexglue-sdk"
 
-BINARIES = ["nfsc.exe", "rexruntime.dll", "rexgpu-xenos.dll", "amd_fidelityfx_vk.dll"]
+# nfsc.exe and every DLL the build copies next to it (the SDK modules, SDL3, Tracy).
 LICENSE_NAME = re.compile(r"^(LICENSE|LICENCE|COPYING)", re.IGNORECASE)
 # Licenses that aren't at the top of their folder.
 EXTRA_LICENSES = {
     "libmspack.txt": "thirdparty/libmspack/libmspack/COPYING.LIB",
-    "fidelityfx.md": "out/build/win-amd64/_deps/fidelityfx-src/docs/license.md",
 }
 
 
@@ -35,7 +35,7 @@ def fail(message: str) -> None:
 
 def check_optimized() -> None:
     # A failed configure once left the release build at -O0 (see the ROADMAP); refuse that.
-    cache = (BUILD / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
+    cache = (BUILD_TREE / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
     match = re.search(r"^CMAKE_CXX_FLAGS_RELEASE:STRING=(.*)$", cache, re.MULTILINE)
     if not match or "-O3" not in match.group(1):
         fail("the release build is not optimized (CMAKE_CXX_FLAGS_RELEASE has no -O3)")
@@ -57,8 +57,9 @@ def main() -> None:
         shutil.rmtree(out)
     (out / "licenses").mkdir(parents=True)
 
-    for binary in BINARIES:
-        shutil.copy2(BUILD / binary, out / binary)
+    binaries = [BUILD / "nfsc.exe"] + sorted(BUILD.glob("*.dll"))
+    for binary in binaries:
+        shutil.copy2(binary, out / binary.name)
     shutil.copy2(ROOT / "README.md", out / "README.md")
     shutil.copy2(ROOT / "LICENSE", out / "LICENSE.txt")
     shutil.copy2(notes, out / "RELEASE-NOTES.md")

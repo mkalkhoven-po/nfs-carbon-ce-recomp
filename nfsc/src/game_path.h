@@ -4,28 +4,27 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
-#include <rex/rex_app.h>
-
-namespace rex {
-class Runtime;
+namespace rex::filesystem {
+class IFileSystem;
 }
 
 namespace nfsc {
 
-// Decides where savegames and the shader cache go: portable mode, user_data_root
-// and cache_root (also from nfsc.toml), otherwise Documents\nfsc and
-// %LOCALAPPDATA%\nfsc\cache. Call before ResolveGamePath.
-void ConfigureDataPaths(rex::PathConfig& paths, const std::filesystem::path& exe_dir);
+// Decides where savegames and the shader cache go, as title-layer values of app.user_root
+// and app.cache_root: portable mode, otherwise Documents\nfsc and %LOCALAPPDATA%\nfsc\cache.
+// Values the player set (nfsc.toml, command line) win. Call before ResolveGamePath.
+void ConfigureDataPaths(const std::filesystem::path& exe_dir);
 
-// Sets paths.game_data_root when it wasn't configured (command line, nfsc.toml):
-// the path remembered from an earlier start, a "game" folder or a single .iso next
-// to the executable, or a disc image / default.xex chosen in a file dialog. A path
-// found or chosen this way is remembered in the user data folder.
-void ResolveGamePath(rex::PathConfig& paths, const std::filesystem::path& exe_dir);
+// Sets title.game_root when the player didn't: the path remembered from an earlier start, a
+// "game" folder or a single .iso next to the executable, or a disc image / default.xex
+// chosen in a file dialog. A path found or chosen this way is remembered in the user data
+// folder. Returns false when there is no game data (the dialog was canceled).
+bool ResolveGamePath(const std::filesystem::path& exe_dir);
 
-// Returns false, after telling the user, if the loaded default.xex is not the
-// Collector's Edition executable the game code in this build was recompiled from.
-bool CheckEdition(rex::Runtime& runtime);
+// Returns a message for the player if default.xex is not the Collector's Edition executable
+// the game code in this build was recompiled from, or "" when it is.
+std::string CheckEdition(rex::filesystem::IFileSystem& file_system);
 
 }  // namespace nfsc

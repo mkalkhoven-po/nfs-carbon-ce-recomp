@@ -1,4 +1,7 @@
-// nfsc - graphics profiles ("original" / "remix") and GPU backend selection.
+// nfsc - graphics profiles ("original" / "remix").
+//
+// A profile is a set of setting values written at the SDK's title layer, below the config
+// file, the command line and PC SETTINGS, so anything the player sets wins.
 
 #pragma once
 
@@ -7,28 +10,16 @@
 
 namespace nfsc {
 
-// Applies the active profile's values as the defaults of the cvars it covers.
-// Cvars set in nfsc.toml, the environment or on the command line keep their
-// value. Must run after the config is loaded and before the GPU is created.
-void ApplyProfile();
+// Writes the profile's values at the title layer. Call from App::OnConfigure.
+void ApplyProfile(std::string_view profile);
 
-// Sets a cvar's default value unless the user set it (config, environment,
-// command line). Returns false if the cvar does not exist.
-bool SetCvarDefault(std::string_view name, std::string_view value);
+// The profile's value for a setting (full name), or "" when the profile doesn't set it.
+std::string ProfileDefault(std::string_view profile, std::string_view setting);
 
-// The value a profile gives a cvar, or "" if the profiles don't cover it.
-std::string ProfileDefault(std::string_view profile, std::string_view cvar);
+// A frame rate limit as a number, with "monitor" resolved; 0 when it isn't valid.
+double FrameRateLimit(std::string_view limit);
 
-// The frame rate from frame_rate_limit, or 0 if that isn't a valid limit.
-double FrameRateLimit();
-
-// Applies frame_rate_limit to the running game.
-void ApplyFrameRateLimit();
-
-// Name of the active profile ("original" or "remix").
+// The profile of this run ("original" or "remix").
 std::string ActiveProfile();
-
-// GPU backend requested for the xenos plugin ("vulkan", "d3d12" or "any").
-std::string GpuBackend();
 
 }  // namespace nfsc

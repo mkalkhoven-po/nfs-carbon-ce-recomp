@@ -4,11 +4,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
-#include <rex/cvar.h>
-#include <rex/logging.h>
+#include "settings.h"
+#include <rex/logging/log_category.h>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -25,7 +26,7 @@ constexpr double kMaxMonitorFrameRate = 165.0;
 constexpr int kMaxResolutionScale = 3;
 
 #if defined(_WIN32)
-// GDI device names, primary monitor first like the monitor cvar's order.
+// GDI device names, primary monitor first like the order of the ui.monitor setting.
 BOOL CALLBACK AddMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM names) {
   auto& list = *reinterpret_cast<std::vector<std::wstring>*>(names);
   MONITORINFOEXW info = {};
@@ -74,7 +75,7 @@ DisplayMode ReadDisplay() {
     return mode;
   }
   // A monitor that isn't there means the default one, as in the SDK.
-  size_t index = size_t(std::max(rex::cvar::Query<int32_t>("monitor") - 1, 0));
+  size_t index = size_t(std::max(std::atoi(SettingText("ui.monitor").c_str()) - 1, 0));
   if (index >= names.size()) {
     index = 0;
   }

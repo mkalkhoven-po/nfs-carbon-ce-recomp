@@ -7,15 +7,11 @@
 #include <chrono>
 #include <cstdint>
 
-#include <rex/cvar.h>
-#include <rex/hook.h>
-#include <rex/logging.h>
+#include <rex/ppc/hook.h>
+#include <rex/logging/log_category.h>
 
+#include "settings.h"
 #include "widescreen.h"
-
-REXCVAR_DEFINE_BOOL(log_fps, false, "NFSC",
-                    "Log the game's frame rate (frames presented) once per second, with the "
-                    "slowest frame of that second");
 
 namespace {
 
@@ -45,7 +41,7 @@ void LogFrameRate() {
 REX_EXTERN(__imp__sub_826E3860);
 REX_HOOK_RAW(sub_826E3860) {
   nfsc::UpdatePresentAspect(base);
-  if (REXCVAR_GET(log_fps)) {
+  if (nfsc::Settings().log_fps.Get()) {
     LogFrameRate();
   }
   __imp__sub_826E3860(ctx, base);

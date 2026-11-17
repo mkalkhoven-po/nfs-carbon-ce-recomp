@@ -18,8 +18,8 @@
 #include <functional>
 #include <utility>
 
-#include <rex/hook.h>
-#include <rex/logging.h>
+#include <rex/ppc/hook.h>
+#include <rex/logging/log_category.h>
 
 #include "main_menu.h"
 #include "pad.h"

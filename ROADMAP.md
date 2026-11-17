@@ -8,8 +8,9 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
 - **Origineel**: 1280×720, 30 fps, native 2× MSAA, nauwkeurige EDRAM-emulatie
   (fragment shader interlock), originele gamma, geen extra post-processing.
   Doel: niet te onderscheiden van een echte 360.
-- **Remix**: hogere interne resolutie, anisotrope filtering, FSR/CAS bij presentatie,
-  120 fps, widescreen/ultrawide naar keuze. Alles los instelbaar.
+- **Remix**: hogere interne resolutie, anisotrope filtering, framerate van de monitor,
+  widescreen/ultrawide naar keuze. Alles los instelbaar. (CAS-verscherping zat erin tot
+  SDK v0.11, die FidelityFX niet meer heeft.)
 
 ## Fases
 
@@ -298,6 +299,31 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
   op issue #1 (portable shadercache) en issue #2 (schokkerig bij 120 fps: de vaste 120 van Remix
   past niet in elk scherm). Het pakketscript is nu Python (`tools/package-release.py`).
 
+## SDK v0.11.0 (17-11, nog niet uitgebracht)
+
+- Overgestapt van ReXGlue SDK v0.10 naar v0.11.0 (1001 commits: nieuwe app-laag
+  `rex::app::TitleApp`, instellingenregister met scopes en lagen, ~20 module-DLL's, Direct3D 12
+  standaard op Windows, geen FidelityFX meer). Bouwen vraagt de VMA-header uit de Vulkan SDK.
+- Onze code omgebouwd: `main.cpp` (app), `settings.cpp` (scope `nfsc`, oude namen als alias),
+  profielen in de titellaag (wat de speler zet wint altijd), paden (savegames blijven in
+  `Documents\nfsc`; v0.11 zou een map `user` naast de exe nemen), F1/F11 als instelbare toetsen
+  (`ui.bind.pc_settings`, `ui.bind.fullscreen`), crashdumps naast het crashrapport van de SDK,
+  herstart via `rex::app::RequestRestart`. Codegen vindt alle functies zonder handmatige lijst.
+- SDK-patches van 10 naar 3 (zie `docs/DEVELOPMENT.nl.md`): ISO als spelmap, upload hoisting met
+  de transfer-pass-fix, en `gpu.xenos.present_aspect`. Video's herkent de app nu aan het
+  FE-pakket `FEAnyMovie.fng`, net als laadschermen; die blijven 16:9 op ultrawide (getest 21:9 en
+  32:9). Een andere fps-limiet werkt pas na een herstart (`ui.video_mode_refresh_rate`).
+- Hoofdmenu, Remix, limiet 240, RTX 5080 (2560x1440): v0.752 167 fps, v0.11 kaal 151, v0.11
+  met hoisting 188–196. Races: één bruikbare ronde per variant (103 tegen 115 fps zonder
+  hoisting); de getimede Quick Race-route was te onbetrouwbaar (vastgelopen menu's, crashes
+  tegen de muur, PAUSE na focusverlies), dus geen racecijfers met hoisting.
+- PC SETTINGS: bij het openen had geen item de focus en kwam Space dubbel binnen (toets én
+  A-knop via mnk). Nu focus op het eerste item een frame na openen, en ImGui-toetsenbordnavigatie
+  uit zolang het venster open is (het toetsenbord bedient het als pad).
+- Getest (toetsenbord, testmappen): ISO, savegame van v0.10, hoofdmenu, Quick Race, F1, F11,
+  Apply and restart (profiel, oude `profile`-regel opgeruimd), intro en laadschermen op 21:9/32:9.
+  Niet getest: controller, Career verder dan het menu, D3D12, een pakket op een andere pc.
+
 ## Onderzocht
 
 - **"Vlekjes" op het eindscherm** (29-10, opgelost 30-10): geen renderfout maar een fout in onze
@@ -322,6 +348,14 @@ optioneel **Remix**-profiel voor moderne hardware. Renderer: **Vulkan**.
       indrukken. Nalopen: sturen, trillen, knoppen, widescreen en HUD met twee beelden, fps.
       Bekend: `pad.cpp` blokkeert alleen speler 1 tijdens PC SETTINGS en op de achtergrond, en
       PC SETTINGS luistert alleen naar speler 1.
+
+- [ ] **Hot pages op SDK v0.11** (17-11). De overgezette versie van v0.10-patch 0007 maakte
+      het menu traag (~30 fps, frames van 550 ms); weggelaten. Uitzoeken waarom (mogelijk de
+      globale watches per pagina) en of het naast hoisting nog iets oplevert.
+- [ ] **Betrouwbare racemeting.** Een route die niet op tijd maar op beeld of log wacht, of
+      een meting door een mens, om v0.11 met hoisting in races te vergelijken.
+- [ ] **Verscherping in Remix.** FidelityFX (CAS) zit niet meer in SDK v0.11. Beslissen of de
+      CAS-shader als eigen patch terug moet; eerst Remix zonder CAS bekijken.
 
 ## Open problemen
 

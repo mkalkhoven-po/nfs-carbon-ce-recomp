@@ -1,0 +1,469 @@
+diff --git a/src/gpu/xenos/host/vulkan/vulkan_settings.h b/src/gpu/xenos/host/vulkan/vulkan_settings.h
+index 954aeb1..6cbff05 100644
+--- a/src/gpu/xenos/host/vulkan/vulkan_settings.h
++++ b/src/gpu/xenos/host/vulkan/vulkan_settings.h
+@@ -55,6 +55,9 @@ class VulkanSettings : public SettingOwner {
+   REX_SETTING(std::string, render_target_path, "", "Render target implementation path",
+               kStartupOnly);
+   REX_SETTING(bool, sparse_shared_memory, true, "Use sparse shared memory", kRestart);
++  REX_SETTING(bool, hoist_shared_memory_uploads, true,
++              "Move shared memory uploads needed during a render pass to before it when no draw "
++              "in it has read those pages yet, instead of ending the render pass for each upload");
+   REX_SETTING(bool, cube_map_edge_filtering_off, false,
+               "Sample cube maps without edge filtering across faces");
+   REX_SETTING(bool, require_geometry_shader, !REX_PLATFORM_MAC,
+diff --git a/src/gpu/xenos/vulkan/command_processor.cpp b/src/gpu/xenos/vulkan/command_processor.cpp
+index 97d4eff..2b59138 100644
+--- a/src/gpu/xenos/vulkan/command_processor.cpp
++++ b/src/gpu/xenos/vulkan/command_processor.cpp
+@@ -2918,7 +2919,8 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+ 
+   if (use_dynamic_rendering) {
+     if (in_render_pass_ && current_framebuffer_ == framebuffer &&
+-        current_render_pass_ == VK_NULL_HANDLE) {
++        current_render_pass_ == VK_NULL_HANDLE &&
++        current_transfer_dest_view_ == VK_NULL_HANDLE) {
+       return;
+     }
+   } else {
+@@ -2938,6 +2940,11 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+ 
+   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
+   current_framebuffer_ = framebuffer;
++  current_transfer_dest_view_ = VK_NULL_HANDLE;
++
++  // Shared memory uploads requested while the render pass is open can be placed here.
++  upload_hoist_slot_ = deferred_command_buffer_.CmdHoistedUploadSlot(shared_memory_->GetBuffer());
++  shared_memory_->ResetUploadHoisting();
+ 
+   if (use_dynamic_rendering) {
+     VkRenderingAttachmentInfo color_attachments[xenos::kMaxColorRenderTargets];
+@@ -2990,7 +2997,8 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+ 
+   if (use_dynamic_rendering) {
+     if (in_render_pass_ && current_framebuffer_ == framebuffer &&
+-        current_render_pass_ == VK_NULL_HANDLE) {
++        current_render_pass_ == VK_NULL_HANDLE &&
++        current_transfer_dest_view_ == transfer_dest_view) {
+       return;
+     }
+   } else {
+@@ -3010,6 +3018,11 @@ void VulkanCommandProcessor::SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+ 
+   current_render_pass_ = use_dynamic_rendering ? VK_NULL_HANDLE : render_pass;
+   current_framebuffer_ = framebuffer;
++  current_transfer_dest_view_ = transfer_dest_view;
++
++  // Shared memory uploads requested while the render pass is open can be placed here.
++  upload_hoist_slot_ = deferred_command_buffer_.CmdHoistedUploadSlot(shared_memory_->GetBuffer());
++  shared_memory_->ResetUploadHoisting();
+ 
+   if (use_dynamic_rendering) {
+     VkRenderingAttachmentInfo color_attachment = {};
+@@ -3843,6 +3856,28 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, u32 index
+       render_target_cache_->GetLastUpdateRenderPass(),
+       render_target_cache_->GetLastUpdateFramebuffer());
+ 
++  // Uploads requested later in this render pass must not move to before this draw if they change
++  // memory it reads.
++  for (u32 i = 0; i < rex::CountOf(constant_map_vertex.vertex_fetch_bitmap); ++i) {
++    u32 vfetch_bits_remaining = constant_map_vertex.vertex_fetch_bitmap[i];
++    u32 j;
++    while (rex::bit_scan_forward(vfetch_bits_remaining, &j)) {
++      vfetch_bits_remaining &= ~(static_cast<u32>(1) << j);
++      xenos::VertexFetch vfetch_constant = regs.GetVertexFetch(i * 32 + j);
++      shared_memory_->MarkRangeReadForUploadHoisting(vfetch_constant.address << 2,
++                                                     vfetch_constant.size << 2);
++    }
++  }
++  if (primitive_processing_result.index_buffer_type ==
++          PrimitiveProcessor::ProcessedIndexBufferType::kGuestDMA ||
++      primitive_processing_result.index_buffer_type ==
++          PrimitiveProcessor::ProcessedIndexBufferType::kHostBuiltinForDMA) {
++    shared_memory_->MarkRangeReadForUploadHoisting(
++        primitive_processing_result.guest_index_base,
++        primitive_processing_result.guest_draw_vertex_count
++            << (vgt_draw_initiator.index_size == xenos::IndexFormat::kInt32 ? 2 : 1));
++  }
++
+   if (primitive_processing_result.index_buffer_type ==
+           PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
+       shader_32bit_index_dma) {
+diff --git a/src/gpu/xenos/vulkan/command_processor.h b/src/gpu/xenos/vulkan/command_processor.h
+index 80f1c21..bb31f22 100644
+--- a/src/gpu/xenos/vulkan/command_processor.h
++++ b/src/gpu/xenos/vulkan/command_processor.h
+@@ -204,6 +204,12 @@ class VulkanCommandProcessor : public CommandProcessor {
+    */
+   bool SubmitBarriers(bool force_end_render_pass);
+ 
++  /**
++   * The deferred command buffer slot, recorded before the open render pass began, for uploads
++   * moved to before the render pass, or UINT32_MAX when no render pass is open.
++   */
++  u32 GetUploadHoistSlot() const { return in_render_pass_ ? upload_hoist_slot_ : UINT32_MAX; }
++
+   /**
+    * Begins a render pass from the render target cache if not started yet. The submission must be
+    * open.
+@@ -757,7 +763,15 @@ class VulkanCommandProcessor : public CommandProcessor {
+   /** VK_NULL_HANDLE with dynamic rendering, where in_render_pass_ is still true. */
+   VkRenderPass current_render_pass_;
+   const VulkanRenderTargetCache::Framebuffer* current_framebuffer_;
++  /**
++   * With dynamic rendering, a transfer pass and a draw pass into the same framebuffer differ only
++   * in their attachments (the transfer binds just the destination, through an ownership transfer
++   * view whose format may be an integer one), so the framebuffer alone can't tell whether the open
++   * pass is the one needed. The transfer destination view, VK_NULL_HANDLE for a draw pass.
++   */
++  VkImageView current_transfer_dest_view_ = VK_NULL_HANDLE;
+   bool in_render_pass_ = false;
++  u32 upload_hoist_slot_ = UINT32_MAX;
+ 
+   /** Exactly one of the title and external graphics pipelines is bound, the other is null. */
+   VkPipeline current_guest_graphics_pipeline_;
+diff --git a/src/gpu/xenos/vulkan/deferred_command_buffer.cpp b/src/gpu/xenos/vulkan/deferred_command_buffer.cpp
+index fdefb09..5312b10 100644
+--- a/src/gpu/xenos/vulkan/deferred_command_buffer.cpp
++++ b/src/gpu/xenos/vulkan/deferred_command_buffer.cpp
+@@ -29,6 +29,22 @@ DeferredCommandBuffer::DeferredCommandBuffer(const VulkanCommandProcessor& comma
+ 
+ void DeferredCommandBuffer::Reset() {
+   command_stream_.Clear();
++  for (u32 i = 0; i < hoisted_upload_slot_count_; ++i) {
++    hoisted_upload_slots_[i].copies.clear();
++  }
++  hoisted_upload_slot_count_ = 0;
++}
++
++u32 DeferredCommandBuffer::CmdHoistedUploadSlot(VkBuffer dst_buffer) {
++  u32 slot = hoisted_upload_slot_count_++;
++  if (slot >= hoisted_upload_slots_.size()) {
++    hoisted_upload_slots_.emplace_back();
++  }
++  hoisted_upload_slots_[slot].dst_buffer = dst_buffer;
++  auto& args = *reinterpret_cast<ArgsHoistedUploads*>(
++      WriteCommand(Command::kHoistedUploads, sizeof(ArgsHoistedUploads)));
++  args.slot = slot;
++  return slot;
+ }
+ 
+ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
+@@ -145,6 +161,38 @@ void DeferredCommandBuffer::Execute(VkCommandBuffer command_buffer) {
+                                 rex::RoundUpPow2(sizeof(ArgsVkCopyBuffer), alignof(VkBufferCopy))));
+       } break;
+ 
++      case Command::kHoistedUploads: {
++        auto& args = *reinterpret_cast<const ArgsHoistedUploads*>(stream);
++        const HoistedUploadSlot& slot = hoisted_upload_slots_[args.slot];
++        if (slot.copies.empty()) {
++          break;
++        }
++        // What accessed the destination before is not known when recording, so wait for all.
++        VkMemoryBarrier memory_barrier;
++        memory_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
++        memory_barrier.pNext = nullptr;
++        memory_barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
++        memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++        dfn.vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
++                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &memory_barrier, 0, nullptr,
++                                 0, nullptr);
++        for (size_t i = 0; i < slot.copies.size();) {
++          VkBuffer src_buffer = slot.copies[i].first;
++          hoisted_upload_regions_.clear();
++          for (; i < slot.copies.size() && slot.copies[i].first == src_buffer; ++i) {
++            hoisted_upload_regions_.push_back(slot.copies[i].second);
++          }
++          dfn.vkCmdCopyBuffer(command_buffer, src_buffer, slot.dst_buffer,
++                              static_cast<u32>(hoisted_upload_regions_.size()),
++                              hoisted_upload_regions_.data());
++        }
++        memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
++        memory_barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
++        dfn.vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &memory_barrier, 0,
++                                 nullptr, 0, nullptr);
++      } break;
++
+       case Command::kVkCopyBufferToImage: {
+         auto& args = *reinterpret_cast<const ArgsVkCopyBufferToImage*>(stream);
+         dfn.vkCmdCopyBufferToImage(
+diff --git a/src/gpu/xenos/vulkan/deferred_command_buffer.h b/src/gpu/xenos/vulkan/deferred_command_buffer.h
+index 23552ca..ec03674 100644
+--- a/src/gpu/xenos/vulkan/deferred_command_buffer.h
++++ b/src/gpu/xenos/vulkan/deferred_command_buffer.h
+@@ -14,6 +14,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstring>
++#include <utility>
+ #include <vector>
+ 
+ #include <rex/assert.h>
+@@ -33,6 +34,19 @@ class DeferredCommandBuffer {
+   void Reset();
+   void Execute(VkCommandBuffer command_buffer);
+ 
++  /**
++   * Records a point, before a render pass begins, to which buffer copies can still be added later
++   * while the render pass is open, so that uploads its draws need don't have to end it. The copies
++   * run at the slot, between full memory barriers.
++   *
++   * @return The slot index.
++   */
++  u32 CmdHoistedUploadSlot(VkBuffer dst_buffer);
++  void AddHoistedUpload(u32 slot, VkBuffer src_buffer, const VkBufferCopy& region) {
++    REX_ASSERT(slot < hoisted_upload_slot_count_);
++    hoisted_upload_slots_[slot].copies.emplace_back(src_buffer, region);
++  }
++
+   // render_pass_begin->pNext must be null.
+   void CmdVkBeginRenderPass(const VkRenderPassBeginInfo* render_pass_begin,
+                             VkSubpassContents contents) {
+@@ -383,6 +397,7 @@ class DeferredCommandBuffer {
+     kVkSetStencilReference,
+     kVkSetStencilWriteMask,
+     kVkSetViewport,
++    kHoistedUploads,
+   };
+ 
+   using Stream = gpu::DeferredStream<Command>;
+@@ -572,12 +587,26 @@ class DeferredCommandBuffer {
+     static_assert(alignof(VkViewport) <= alignof(uintmax_t));
+   };
+ 
++  struct ArgsHoistedUploads {
++    u32 slot;
++  };
++
++  struct HoistedUploadSlot {
++    VkBuffer dst_buffer;
++    std::vector<std::pair<VkBuffer, VkBufferCopy>> copies;
++  };
++
+   void* WriteCommand(Command command, size_t arguments_size_bytes);
+ 
+   const VulkanCommandProcessor& command_processor_;
+ 
+   /** uintmax_t elements give uint64_t and pointer alignment to all structures. */
+   Stream command_stream_;
++
++  /** Slots are reused across submissions to keep their allocations. */
++  std::vector<HoistedUploadSlot> hoisted_upload_slots_;
++  u32 hoisted_upload_slot_count_ = 0;
++  std::vector<VkBufferCopy> hoisted_upload_regions_;
+ };
+ 
+ }  // namespace rex::gpu::vulkan
+diff --git a/src/gpu/xenos/vulkan/shared_memory.cpp b/src/gpu/xenos/vulkan/shared_memory.cpp
+index 7b91460..79c57c8 100644
+--- a/src/gpu/xenos/vulkan/shared_memory.cpp
++++ b/src/gpu/xenos/vulkan/shared_memory.cpp
+@@ -39,6 +39,8 @@ VulkanSharedMemory::~VulkanSharedMemory() {
+ 
+ bool VulkanSharedMemory::Initialize() {
+   InitializeCommon();
++  upload_hoisting_pages_.assign(((kBufferSize >> GetPageSizeLog2()) + 63) / 64, 0);
++  upload_hoisting_blocks_used_.clear();
+ 
+   const gpu::vulkan::VulkanDevice* const vulkan_device = command_processor_.GetVulkanDevice();
+   const gpu::vulkan::VulkanDevice::Functions& dfn = vulkan_device->GetFunctions();
+@@ -252,22 +254,108 @@ bool VulkanSharedMemory::AllocateSparseHostGPUMemoryRange(u32 offset_allocations
+   return true;
+ }
+ 
++void VulkanSharedMemory::ResetUploadHoisting() {
++  for (u32 block : upload_hoisting_blocks_used_) {
++    upload_hoisting_pages_[block] = 0;
++  }
++  upload_hoisting_blocks_used_.clear();
++}
++
++void VulkanSharedMemory::MarkRangeReadForUploadHoisting(u32 start, u32 length) {
++  if (!length || start >= kBufferSize) {
++    return;
++  }
++  length = std::min(length, kBufferSize - start);
++  MarkPagesForUploadHoisting(start >> GetPageSizeLog2(), (start + length - 1) >> GetPageSizeLog2());
++}
++
++void VulkanSharedMemory::MarkPagesForUploadHoisting(u32 page_first, u32 page_last) {
++  u32 block_first = page_first >> 6;
++  u32 block_last = page_last >> 6;
++  for (u32 i = block_first; i <= block_last; ++i) {
++    u64 bits = UINT64_MAX;
++    if (i == block_first) {
++      bits &= ~((static_cast<u64>(1) << (page_first & 63)) - 1);
++    }
++    if (i == block_last && (page_last & 63) != 63) {
++      bits &= (static_cast<u64>(1) << ((page_last & 63) + 1)) - 1;
++    }
++    u64& block = upload_hoisting_pages_[i];
++    if (!block) {
++      upload_hoisting_blocks_used_.push_back(i);
++    }
++    block |= bits;
++  }
++}
++
++bool VulkanSharedMemory::ArePagesMarkedForUploadHoisting(u32 page_first, u32 page_last) const {
++  u32 block_first = page_first >> 6;
++  u32 block_last = page_last >> 6;
++  for (u32 i = block_first; i <= block_last; ++i) {
++    u64 bits = UINT64_MAX;
++    if (i == block_first) {
++      bits &= ~((static_cast<u64>(1) << (page_first & 63)) - 1);
++    }
++    if (i == block_last && (page_last & 63) != 63) {
++      bits &= (static_cast<u64>(1) << ((page_last & 63) + 1)) - 1;
++    }
++    if (upload_hoisting_pages_[i] & bits) {
++      return true;
++    }
++  }
++  return false;
++}
++
+ bool VulkanSharedMemory::UploadRanges(const std::vector<std::pair<u32, u32>>& upload_page_ranges) {
+   if (upload_page_ranges.empty()) {
+     return true;
+   }
+-  // The ranges are sorted, so front and back bound the barrier.
+-  Use(Usage::kTransferDestination,
+-      std::make_pair(upload_page_ranges.front().first << GetPageSizeLog2(),
+-                     (upload_page_ranges.back().first + upload_page_ranges.back().second -
+-                      upload_page_ranges.front().first)
+-                         << GetPageSizeLog2()));
+-  command_processor_.SubmitBarriers(true);
+   DeferredCommandBuffer& command_buffer = command_processor_.GetDeferredCommandBuffer();
++  // The copies can move to before the open render pass if no draw in it has read the pages yet
++  // and nothing in it writes the shared memory, so every access within the render pass reads.
++  u32 hoist_slot = UINT32_MAX;
++  if (command_processor_.GetVulkanSettings().hoist_shared_memory_uploads.Get() &&
++      last_usage_ == Usage::kRead && !last_written_range_.second) {
++    hoist_slot = command_processor_.GetUploadHoistSlot();
++    if (hoist_slot != UINT32_MAX) {
++      for (auto upload_range : upload_page_ranges) {
++        if (ArePagesMarkedForUploadHoisting(upload_range.first,
++                                            upload_range.first + upload_range.second - 1)) {
++          hoist_slot = UINT32_MAX;
++          break;
++        }
++      }
++    }
++  }
++  if (hoist_slot == UINT32_MAX) {
++    // The ranges are sorted, so front and back bound the barrier.
++    Use(Usage::kTransferDestination,
++        std::make_pair(upload_page_ranges.front().first << GetPageSizeLog2(),
++                       (upload_page_ranges.back().first + upload_page_ranges.back().second -
++                        upload_page_ranges.front().first)
++                           << GetPageSizeLog2()));
++    command_processor_.SubmitBarriers(true);
++  }
+   u64 submission_current = command_processor_.GetCurrentSubmission();
+   bool successful = true;
+   upload_regions_.clear();
+   VkBuffer upload_buffer_previous = VK_NULL_HANDLE;
++  auto flush_upload_regions = [&]() {
++    if (upload_regions_.empty()) {
++      return;
++    }
++    REX_ASSERT(upload_buffer_previous != VK_NULL_HANDLE);
++    if (hoist_slot != UINT32_MAX) {
++      for (const VkBufferCopy& upload_region : upload_regions_) {
++        command_buffer.AddHoistedUpload(hoist_slot, upload_buffer_previous, upload_region);
++      }
++    } else {
++      command_buffer.CmdVkCopyBuffer(upload_buffer_previous, buffer_,
++                                     static_cast<u32>(upload_regions_.size()),
++                                     upload_regions_.data());
++    }
++    upload_regions_.clear();
++  };
+   for (auto upload_range : upload_page_ranges) {
+     u32 upload_range_start = upload_range.first;
+     u32 upload_range_length = upload_range.second;
+@@ -293,12 +381,8 @@ bool VulkanSharedMemory::UploadRanges(const std::vector<std::pair<u32, u32>>& up
+         break;
+       }
+       std::memcpy(upload_buffer_mapping, upload_source, upload_buffer_size);
+-      if (upload_buffer_previous != upload_buffer && !upload_regions_.empty()) {
+-        REX_ASSERT(upload_buffer_previous != VK_NULL_HANDLE);
+-        command_buffer.CmdVkCopyBuffer(upload_buffer_previous, buffer_,
+-                                       static_cast<u32>(upload_regions_.size()),
+-                                       upload_regions_.data());
+-        upload_regions_.clear();
++      if (upload_buffer_previous != upload_buffer) {
++        flush_upload_regions();
+       }
+       upload_buffer_previous = upload_buffer;
+       VkBufferCopy& upload_region = upload_regions_.emplace_back();
+@@ -306,6 +390,11 @@ bool VulkanSharedMemory::UploadRanges(const std::vector<std::pair<u32, u32>>& up
+       upload_region.dstOffset = static_cast<VkDeviceSize>(upload_range_start) << GetPageSizeLog2();
+       upload_region.size = upload_buffer_size;
+       u32 upload_buffer_pages = static_cast<u32>(upload_buffer_size >> GetPageSizeLog2());
++      if (hoist_slot != UINT32_MAX) {
++        // Copies to the same pages in one slot would not be ordered.
++        MarkPagesForUploadHoisting(upload_range_start,
++                                   upload_range_start + upload_buffer_pages - 1);
++      }
+       upload_range_start += upload_buffer_pages;
+       upload_range_length -= upload_buffer_pages;
+     }
+@@ -313,13 +402,7 @@ bool VulkanSharedMemory::UploadRanges(const std::vector<std::pair<u32, u32>>& up
+       break;
+     }
+   }
+-  if (!upload_regions_.empty()) {
+-    REX_ASSERT(upload_buffer_previous != VK_NULL_HANDLE);
+-    command_buffer.CmdVkCopyBuffer(upload_buffer_previous, buffer_,
+-                                   static_cast<u32>(upload_regions_.size()),
+-                                   upload_regions_.data());
+-    upload_regions_.clear();
+-  }
++  flush_upload_regions();
+   return successful;
+ }
+ 
+diff --git a/src/gpu/xenos/vulkan/shared_memory.h b/src/gpu/xenos/vulkan/shared_memory.h
+index e3040bf..8e73af9 100644
+--- a/src/gpu/xenos/vulkan/shared_memory.h
++++ b/src/gpu/xenos/vulkan/shared_memory.h
+@@ -53,6 +53,15 @@ class VulkanSharedMemory : public SharedMemory {
+ 
+   VkBuffer GetBuffer() const { return buffer_; }
+ 
++  /**
++   * Upload hoisting: while a render pass is open, uploads go to the hoisted upload slot recorded
++   * before it, instead of ending it, unless a draw in the render pass has read the pages already.
++   * Call ResetUploadHoisting when a render pass begins, and MarkRangeReadForUploadHoisting for the
++   * shared memory each draw reads.
++   */
++  void ResetUploadHoisting();
++  void MarkRangeReadForUploadHoisting(u32 start, u32 length);
++
+  protected:
+   bool AllocateSparseHostGPUMemoryRange(u32 offset_allocations, u32 length_allocations) override;
+ 
+@@ -62,6 +71,9 @@ class VulkanSharedMemory : public SharedMemory {
+   void GetUsageMasks(Usage usage, VkPipelineStageFlags& stage_mask,
+                      VkAccessFlags& access_mask) const;
+ 
++  void MarkPagesForUploadHoisting(u32 page_first, u32 page_last);
++  bool ArePagesMarkedForUploadHoisting(u32 page_first, u32 page_last) const;
++
+   VulkanCommandProcessor& command_processor_;
+   VkPipelineStageFlags guest_shader_pipeline_stages_;
+ 
+@@ -75,6 +87,10 @@ class VulkanSharedMemory : public SharedMemory {
+ 
+   std::unique_ptr<gpu::vulkan::VulkanUploadBufferPool> upload_buffer_pool_;
+   std::vector<VkBufferCopy> upload_regions_;
++
++  /** Pages read or uploaded since ResetUploadHoisting, and the non-zero 64-page blocks of it. */
++  std::vector<u64> upload_hoisting_pages_;
++  std::vector<u32> upload_hoisting_blocks_used_;
+ };
+ 
+ }  // namespace rex::gpu::vulkan

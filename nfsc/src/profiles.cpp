@@ -1,101 +1,70 @@
-// nfsc - graphics profiles ("original" / "remix") and GPU backend selection.
+// nfsc - graphics profiles ("original" / "remix").
 
 #include "profiles.h"
 
 #include <array>
 #include <cstdlib>
-#include <string_view>
 
-#include <fmt/format.h>
-
-#include <rex/cvar.h>
-#include <rex/logging.h>
+#include <rex/logging/log_category.h>
+#include <rex/settings_registry.h>
 
 #include "display.h"
-
-REXCVAR_DEFINE_STRING(profile, "original", "NFSC",
-                      "Graphics profile: original (faithful to the Xbox 360) or remix "
-                      "(higher resolution and sharper filtering). Settings you change "
-                      "yourself always override the profile.")
-    .allowed({"original", "remix"})
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_STRING(frame_rate_limit, "30", "NFSC",
-                      "Frame rate limit: a number, or monitor to follow the monitor's refresh "
-                      "rate. Without it the graphics profile decides. guest_vblank_rate, if you "
-                      "set it, goes first.");
-
-REXCVAR_DEFINE_STRING(gpu_backend, "vulkan", "NFSC",
-                      "GPU backend for the xenos plugin: vulkan, d3d12 or any")
-    .allowed({"vulkan", "d3d12", "any"})
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
+#include "settings.h"
 
 namespace nfsc {
 
 namespace {
 
 struct ProfileValue {
-  std::string_view cvar;
+  std::string_view setting;
   std::string_view original;
   std::string_view remix;
 };
 
-// "original": what the Xbox 360 shows. Accurate EDRAM emulation via fragment
-// shader interlock (Vulkan) or rasterizer ordered views (D3D12), the game's own
-// texture filtering, native 720p with the game's 2x MSAA.
-// "remix": host render targets (fbo / rtv) instead of the interlocked EDRAM
-// path, rendered at the scale that covers the monitor ("auto": 2x on 1080p and
-// 1440p, 3x on 4K) with 16x anisotropic filtering. The interlocked path keeps an RTX 5080 at 94-97% in races at 60 fps; host render
-// targets need ~68% and looked identical in side-by-side captures of the menu
-// and a race start (high-speed effects not compared yet).
+// "original": what the Xbox 360 shows. Accurate EDRAM emulation via fragment shader
+// interlock (Vulkan) or rasterizer ordered views (D3D12), the game's own texture
+// filtering, native 720p with the game's 2x MSAA.
+// "remix": host render targets (fbo / rtv) instead of the interlocked EDRAM path, rendered
+// at the scale that covers the monitor ("auto": 2x on 1080p and 1440p, 3x on 4K) with 16x
+// anisotropic filtering. The interlocked path keeps an RTX 5080 at 94-97% in races at 60
+// fps; host render targets need ~68% and looked identical in side-by-side captures.
 constexpr std::array kProfileValues = {
-    ProfileValue{"render_target_path_vulkan", "fsi", "fbo"},
-    ProfileValue{"render_target_path_d3d12", "rov", "rtv"},
-    ProfileValue{"anisotropic_override", "-1", "5"},
-    ProfileValue{"draw_resolution_scale_x", "1", "auto"},
-    ProfileValue{"draw_resolution_scale_y", "1", "auto"},
-    ProfileValue{"native_2x_msaa", "true", "true"},
-    ProfileValue{"swap_post_effect", "none", "none"},
-    // AMD CAS sharpening when presenting (needs the SDK built with FidelityFX).
-    // At 2x on a 1440p display it only sharpens; the effect is mild.
-    ProfileValue{"present_effect", "bilinear", "cas"},
-    // The game presents on every vblank and times its simulation by the clock,
-    // so the vblank rate is the frame cap: 30 fps like the Xbox 360 (which never
-    // reached 60), or the monitor's rate, because a limit the monitor can't divide
-    // shows some frames longer than others (120 fps on 144 Hz repeats every fifth).
-    // Race timers run in real time at 30, 60, 120 and 240.
-    ProfileValue{"frame_rate_limit", "30", "monitor"},
-    // The SDK forgets every CPU-uploaded page at the end of each frame by
-    // default (a workaround for other games), so all vertex data used in a frame
-    // is uploaded again in the next. Carbon doesn't need it; off is ~3% faster.
-    ProfileValue{"clear_memory_page_state", "false", "false"},
-    // Vertex data the game rewrites every frame is compared with the last upload
-    // instead of write-protected (SDK patch 0007, off by default): menus ~8%,
-    // races ~19% faster.
-    ProfileValue{"shared_memory_hot_pages", "true", "true"},
-    // Immediate presentation shows only black on NVIDIA (RTX 5080, layered DXGI
-    // present); mailbox and FIFO work.
-    ProfileValue{"vulkan_allow_present_mode_immediate", "false", "false"},
-    // Not graphics, but a sensible default for both: keyboard controls next to
-    // a controller (the input system merges both devices for player 1).
-    ProfileValue{"mnk_mode", "true", "true"},
+    // SDK v0.11 picks Direct3D 12 on Windows by default; we test on Vulkan.
+    ProfileValue{"gpu.driver", "vulkan", "vulkan"},
+    ProfileValue{"gpu.vulkan.render_target_path", "fsi", "fbo"},
+    ProfileValue{"gpu.d3d12.render_target_path", "rov", "rtv"},
+    ProfileValue{"gpu.anisotropic_override", "-1", "5"},
+    ProfileValue{"gpu.resolution_scale_x", "1", "auto"},
+    ProfileValue{"gpu.resolution_scale_y", "1", "auto"},
+    ProfileValue{"gpu.xenos.native_2x_msaa", "true", "true"},
+    ProfileValue{"gpu.xenos.swap_post_effect", "none", "none"},
+    // The game presents on every vblank and times its simulation by the clock, so the
+    // vblank rate (the refresh rate the title sees) is the frame cap: 30 fps like the
+    // Xbox 360 (which never reached 60), or the monitor's rate, because a limit the monitor
+    // can't divide shows some frames longer than others (120 fps on 144 Hz repeats every
+    // fifth). Race timers run in real time at 30, 60, 120 and 240.
+    ProfileValue{"nfsc.frame_rate_limit", "30", "monitor"},
+    // The SDK forgets every CPU-uploaded page at the end of each frame by default (a
+    // workaround for other games), so all vertex data used in a frame is uploaded again in
+    // the next. Carbon doesn't need it; off was ~3% faster on SDK v0.10.
+    ProfileValue{"gpu.xenos.clear_memory_page_state", "false", "false"},
+    // Immediate presentation showed only black on NVIDIA (RTX 5080, layered DXGI present)
+    // on SDK v0.10; mailbox and FIFO work.
+    ProfileValue{"gpu.vulkan.allow_present_mode_immediate", "false", "false"},
+    // Not graphics, but a sensible default for both: keyboard controls next to a
+    // controller (the input system merges both devices for player 1).
+    ProfileValue{"hid.mnk_mode", "true", "true"},
     // The console's start with its logos and videos, or straight to the menu.
-    ProfileValue{"skip_intro", "false", "true"},
+    ProfileValue{"nfsc.skip_intro", "false", "true"},
 };
+
+std::string g_active_profile = "original";
 
 }  // namespace
 
-std::string ActiveProfile() {
-  return REXCVAR_GET(profile);
-}
-
-std::string GpuBackend() {
-  return REXCVAR_GET(gpu_backend);
-}
-
-std::string ProfileDefault(std::string_view profile, std::string_view cvar) {
+std::string ProfileDefault(std::string_view profile, std::string_view setting) {
   for (const auto& value : kProfileValues) {
-    if (value.cvar == cvar) {
+    if (value.setting == setting) {
       const std::string_view chosen = profile == "remix" ? value.remix : value.original;
       return chosen == "auto" ? std::to_string(MonitorResolutionScale()) : std::string(chosen);
     }
@@ -103,42 +72,28 @@ std::string ProfileDefault(std::string_view profile, std::string_view cvar) {
   return {};
 }
 
-double FrameRateLimit() {
-  const std::string& limit = REXCVAR_GET(frame_rate_limit);
-  return limit == "monitor" ? MonitorFrameRate() : std::strtod(limit.c_str(), nullptr);
-}
-
-void ApplyFrameRateLimit() {
-  if (const double rate = FrameRateLimit(); rate > 0.0) {
-    rex::cvar::SetFlagByName("guest_vblank_rate", fmt::format("{}", rate));
+double FrameRateLimit(std::string_view limit) {
+  if (limit == "monitor") {
+    return MonitorFrameRate();
   }
+  return std::strtod(std::string(limit).c_str(), nullptr);
 }
 
-bool SetCvarDefault(std::string_view name, std::string_view value) {
-  for (auto& entry : rex::cvar::GetRegistry()) {
-    if (entry.name != name)
-      continue;
-    // Leave values the user chose alone. Changing the default itself (not just
-    // the value) keeps the settings dialog from saving it into nfsc.toml and
-    // makes "reset to default" return to it.
-    if (entry.source == rex::cvar::Source::kDefault) {
-      entry.default_value = std::string(value);
-      entry.setter(value);
-    }
-    return true;
-  }
-  REXLOG_WARN("nfsc: cvar '{}' does not exist", name);
-  return false;
+std::string ActiveProfile() {
+  return g_active_profile;
 }
 
-void ApplyProfile() {
+void ApplyProfile(std::string_view profile) {
+  g_active_profile = std::string(profile);
+  auto& registry = REX_SETTINGS();
   for (const auto& value : kProfileValues) {
-    SetCvarDefault(value.cvar, ProfileDefault(ActiveProfile(), value.cvar));
+    const std::string text = ProfileDefault(profile, value.setting);
+    if (auto result = registry.SetText(rex::SettingLayer::kTitle, value.setting, text); !result) {
+      REXLOG_WARN("nfsc: profile value {} = {}: {}", value.setting, text,
+                  result.error().GetDescription());
+    }
   }
-  if (const double rate = FrameRateLimit(); rate > 0.0) {
-    SetCvarDefault("guest_vblank_rate", fmt::format("{}", rate));
-  }
-  REXLOG_INFO("nfsc: graphics profile '{}', GPU backend '{}'", ActiveProfile(), GpuBackend());
+  REXLOG_INFO("nfsc: graphics profile '{}'", profile);
 }
 
 }  // namespace nfsc
